@@ -18,7 +18,7 @@ class AppStorage {
 
   static Future<void> clearToken() => _storage.delete(key: _keyToken);
 
-  // ── Scanned dates — tracks which dates have had SMS/Gmail scanned ──────────
+  // ── Scanned dates — past calendar days only (today is never marked) ───────
 
   static Future<bool> isDateScanned(DateTime date) async {
     final val = await _storage.read(key: _keyScanned);
@@ -38,6 +38,11 @@ class AppStorage {
     final dates = val.isEmpty ? <String>{} : val.split(',').toSet();
     dates.remove(_fmt(date));
     await _storage.write(key: _keyScanned, value: dates.join(','));
+  }
+
+  /// After Gmail is linked, re-scan past days that were SMS-only.
+  static Future<void> clearAllScannedDates() async {
+    await _storage.delete(key: _keyScanned);
   }
 
   static String _fmt(DateTime d) =>

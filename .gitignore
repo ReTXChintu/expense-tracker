@@ -29,6 +29,10 @@ ios/Flutter/flutter_export_environment.sh
 ios/ServiceDefinitions.json
 ios/Runner/GeneratedPluginRegistrant.*
 
+# Environment (secrets)
+.env
+lib/core/google_secrets.dart
+
 # Misc
 *.iml
 *.log

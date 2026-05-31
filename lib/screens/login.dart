@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
 import '../core/api.dart';
+import '../widgets/branded_splash.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -78,25 +79,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(height: 24),
-                // Logo / app name
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
+                Image.asset(
+                  'assets/branding/logo_full.png',
+                  height: kSplashLogoHeight,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Icon(
+                    Icons.receipt_long,
+                    size: 48,
                     color: cs.primary,
-                    borderRadius: BorderRadius.circular(18),
                   ),
-                  child: const Icon(Icons.receipt_long, color: Colors.white, size: 32),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'SpendLog',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontSize: 26),
-                ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 12),
                 Text(
                   'Track every rupee, every day.',
                   style: Theme.of(context).textTheme.bodyMedium,

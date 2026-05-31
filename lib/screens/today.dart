@@ -6,6 +6,8 @@ import '../providers.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../core/gmail_reader.dart';
+import '../core/date_utils.dart';
+import '../core/api.dart';
 
 class TodayScreen extends ConsumerWidget {
   const TodayScreen({super.key});
@@ -58,17 +60,21 @@ class TodayScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.chevron_left),
             tooltip: 'Previous day',
-            onPressed: () => ref.read(todayProvider.notifier).goToDate(
-                  state.date.subtract(const Duration(days: 1)),
-                ),
+            onPressed: () {
+              final prev = normalizeCalendarDate(state.date)
+                  .subtract(const Duration(days: 1));
+              ref.read(todayProvider.notifier).goToDate(prev);
+            },
           ),
-          if (!_isToday(state.date))
+          if (!isToday(state.date))
             IconButton(
               icon: const Icon(Icons.chevron_right),
               tooltip: 'Next day',
-              onPressed: () => ref.read(todayProvider.notifier).goToDate(
-                    state.date.add(const Duration(days: 1)),
-                  ),
+              onPressed: () {
+                final next = normalizeCalendarDate(state.date)
+                    .add(const Duration(days: 1));
+                ref.read(todayProvider.notifier).goToDate(next);
+              },
             ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -112,11 +118,6 @@ class TodayScreen extends ConsumerWidget {
             ),
     );
   }
-
-  bool _isToday(DateTime d) {
-    final now = DateTime.now();
-    return d.year == now.year && d.month == now.month && d.day == now.day;
-  }
 }
 
 // ─── Body ─────────────────────────────────────────────────────────────────────
@@ -145,15 +146,23 @@ class _BodyState extends ConsumerState<_Body> {
   }
 
   Future<void> _connectGmail() async {
-    final account = await GmailReader.signIn();
-    if (account != null) {
-      setState(() => _gmailConnected = true);
-      if (mounted) {
-        ref
-            .read(todayProvider.notifier)
-            .load(widget.state.date, forceRescan: true);
+    try {
+      final account = await GmailReader.signIn();
+      if (account != null) {
+        setState(() => _gmailConnected = true);
+        if (mounted) {
+          await ref.read(todayProvider.notifier).onGmailConnected();
+        }
       }
+    } on GmailReaderException catch (e) {
+      if (mounted) _showGmailSnackBar(context, e.message);
     }
+  }
+
+  void _showGmailSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 5)),
+    );
   }
 
   void _openSheet({Transaction? existing, bool isSaved = false}) {
@@ -200,7 +209,12 @@ class _BodyState extends ConsumerState<_Body> {
       slivers: [
         // Gmail connect banner
         if (!_gmailConnected)
-          SliverToBoxAdapter(child: _GmailBanner(onConnect: _connectGmail)),
+          SliverToBoxAdapter(
+            child: _GmailBanner(
+              onConnect: _connectGmail,
+              notConfigured: !GmailReader.isConfigured,
+            ),
+          ),
 
         // Scanning banner
         if (state.scanning)
@@ -369,7 +383,11 @@ class _Deletable extends StatelessWidget {
 
 class _GmailBanner extends StatelessWidget {
   final VoidCallback onConnect;
-  const _GmailBanner({required this.onConnect});
+  final bool notConfigured;
+  const _GmailBanner({
+    required this.onConnect,
+    this.notConfigured = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -385,9 +403,13 @@ class _GmailBanner extends StatelessWidget {
         children: [
           const Icon(Icons.mail_outline, color: AC.gmailColor, size: 20),
           const SizedBox(width: 10),
-          const Expanded(
-            child: Text('Connect Gmail to fetch transactions from emails',
-                style: TextStyle(fontSize: 13)),
+          Expanded(
+            child: Text(
+              notConfigured
+                  ? 'Gmail setup required — add OAuth client ID (see GOOGLE_SETUP.md)'
+                  : 'Connect Gmail to fetch transactions from emails',
+              style: const TextStyle(fontSize: 13),
+            ),
           ),
           TextButton(
             onPressed: onConnect,
@@ -395,7 +417,7 @@ class _GmailBanner extends StatelessWidget {
                 foregroundColor: AC.gmailColor,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
-            child: const Text('Connect'),
+            child: Text(notConfigured ? 'Info' : 'Connect'),
           ),
         ],
       ),
@@ -472,7 +494,7 @@ class _TxTile extends StatelessWidget {
         : null;
 
     return GestureDetector(
-      onTap: tx.rawText != null ? () => _showRawMessage(context) : null,
+      onTap: tx.sourceTexts.isNotEmpty ? () => _showRawMessage(context) : null,
       child: Container(
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         decoration: BoxDecoration(
@@ -484,7 +506,7 @@ class _TxTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SourceDot(source: tx.source),
+              _SourceIndicators(sources: tx.sources),
               const SizedBox(width: 12),
 
               // Merchant + preview + category picker
@@ -499,15 +521,7 @@ class _TxTile extends StatelessWidget {
                             ?.copyWith(fontWeight: FontWeight.w600),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
-                    if (tx.rawText != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _plainPreview(tx.rawText!),
-                        style: Theme.of(context).textTheme.bodySmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                    ..._sourcePreviews(context, tx),
                     const SizedBox(height: 6),
                     _CategoryPicker(
                       categories: categories,
@@ -556,9 +570,46 @@ class _TxTile extends StatelessWidget {
     );
   }
 
+  static List<Widget> _sourcePreviews(BuildContext context, Transaction tx) {
+    final widgets = <Widget>[];
+    for (final src in tx.sources) {
+      final text = tx.textForSource(src);
+      if (text == null || text.isEmpty) continue;
+      final (icon, color, label) = switch (src) {
+        TxSource.sms => (Icons.sms_outlined, AC.smsColor, 'SMS'),
+        TxSource.gmail => (Icons.mail_outline, AC.gmailColor, 'Email'),
+        TxSource.manual => (Icons.edit_outlined, AC.manualColor, 'Note'),
+      };
+      widgets.addAll([
+        const SizedBox(height: 4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                tx.hasMultipleSources
+                    ? '$label · ${_plainPreview(text)}'
+                    : _plainPreview(text),
+                style: Theme.of(context).textTheme.bodySmall,
+                maxLines: tx.hasMultipleSources ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ]);
+    }
+    return widgets;
+  }
+
   void _showRawMessage(BuildContext context) {
-    final raw = tx.rawText ?? '';
-    final isHtml = _isHtml(raw);
+    final sections = tx.sources
+        .map((s) => (s, tx.textForSource(s) ?? ''))
+        .where((e) => e.$2.isNotEmpty)
+        .toList();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -587,43 +638,32 @@ class _TxTile extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: Row(
                 children: [
-                  Icon(
-                    tx.source == TxSource.sms
-                        ? Icons.sms_outlined
-                        : Icons.mail_outline,
-                    size: 18,
-                    color: tx.source == TxSource.sms
-                        ? AC.smsColor
-                        : AC.gmailColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    tx.source == TxSource.sms ? 'SMS Message' : 'Email',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  _SourceIndicators(sources: tx.sources, compact: true),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      tx.hasMultipleSources
+                          ? 'SMS & Email'
+                          : (tx.sources.first == TxSource.sms
+                              ? 'SMS Message'
+                              : 'Email'),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
                 ],
               ),
             ),
             const Divider(height: 1),
             Expanded(
-              child: SingleChildScrollView(
+              child: ListView(
                 controller: scrollCtrl,
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                child: isHtml
-                    ? HtmlWidget(
-                        raw,
-                        textStyle: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(height: 1.5),
-                      )
-                    : Text(
-                        raw,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(height: 1.5),
-                      ),
+                children: [
+                  for (final (src, raw) in sections) ...[
+                    _rawSection(context, src, raw),
+                    if (src != sections.last.$1) const SizedBox(height: 20),
+                  ],
+                ],
               ),
             ),
           ],
@@ -631,16 +671,82 @@ class _TxTile extends StatelessWidget {
       ),
     );
   }
+
+  static Widget _rawSection(BuildContext context, TxSource src, String raw) {
+    final (icon, color, title) = switch (src) {
+      TxSource.sms => (Icons.sms_outlined, AC.smsColor, 'SMS'),
+      TxSource.gmail => (Icons.mail_outline, AC.gmailColor, 'Email'),
+      TxSource.manual => (Icons.edit_outlined, AC.manualColor, 'Details'),
+    };
+    final isHtml = _isHtml(raw);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(title,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(color: color)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        isHtml
+            ? HtmlWidget(
+                raw,
+                textStyle: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(height: 1.5),
+              )
+            : Text(
+                raw,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(height: 1.5),
+              ),
+      ],
+    );
+  }
 }
 
-// ─── Source dot ───────────────────────────────────────────────────────────────
+// ─── Source indicators (SMS + Gmail stacked) ───────────────────────────────────
 
-class _SourceDot extends StatelessWidget {
-  final TxSource source;
-  const _SourceDot({required this.source});
+class _SourceIndicators extends StatelessWidget {
+  final List<TxSource> sources;
+  final bool compact;
+  const _SourceIndicators({required this.sources, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
+    final list = sources.isEmpty ? [TxSource.manual] : sources;
+    if (list.length == 1) {
+      return _sourceChip(list.first, compact: compact);
+    }
+    return SizedBox(
+      width: compact ? 40 : 36,
+      height: compact ? 40 : 44,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _sourceChip(list.first, compact: true, small: true),
+          const SizedBox(height: 4),
+          _sourceChip(
+            list.length > 1 ? list[1] : list.first,
+            compact: true,
+            small: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sourceChip(TxSource source,
+      {bool compact = false, bool small = false}) {
     final color = switch (source) {
       TxSource.sms => AC.smsColor,
       TxSource.gmail => AC.gmailColor,
@@ -651,21 +757,23 @@ class _SourceDot extends StatelessWidget {
       TxSource.gmail => Icons.mail_outline,
       TxSource.manual => Icons.edit_outlined,
     };
+    final size = small ? 16.0 : (compact ? 18.0 : 18.0);
+    final box = small ? 22.0 : (compact ? 28.0 : 36.0);
     return Container(
-      width: 36,
-      height: 36,
+      width: box,
+      height: box,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(small ? 6 : 10),
       ),
-      child: Icon(icon, color: color, size: 18),
+      child: Icon(icon, color: color, size: size),
     );
   }
 }
 
 // ─── Category picker chip ─────────────────────────────────────────────────────
 
-class _CategoryPicker extends StatelessWidget {
+class _CategoryPicker extends ConsumerWidget {
   final List<Category> categories;
   final Category? selected;
   final void Function(String)? onSelect;
@@ -674,9 +782,9 @@ class _CategoryPicker extends StatelessWidget {
       {required this.categories, this.selected, this.onSelect});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: onSelect != null ? () => _showPicker(context) : null,
+      onTap: onSelect != null ? () => _showPicker(context, ref) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
@@ -718,82 +826,451 @@ class _CategoryPicker extends StatelessWidget {
     );
   }
 
-  Future<void> _showPicker(BuildContext context) async {
+  Future<void> _showPicker(BuildContext context, WidgetRef ref) async {
     final result = await showModalBottomSheet<Category>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _CategorySheet(categories: categories),
+      builder: (_) => const _CategorySheet(),
     );
     if (result != null) onSelect?.call(result.id);
   }
 }
 
+// ─── Category picker presets ──────────────────────────────────────────────────
+
+const _categoryIconOptions = <String, IconData>{
+  'restaurant': Icons.restaurant,
+  'shopping_bag': Icons.shopping_bag,
+  'directions_car': Icons.directions_car,
+  'receipt_long': Icons.receipt_long,
+  'local_gas_station': Icons.local_gas_station,
+  'trending_up': Icons.trending_up,
+  'movie': Icons.movie,
+  'local_hospital': Icons.local_hospital,
+  'pets': Icons.pets,
+  'fitness_center': Icons.fitness_center,
+  'home': Icons.home,
+  'flight': Icons.flight,
+  'more_horiz': Icons.more_horiz,
+};
+
+const _categoryColorOptions = [
+  '#FF6B6B',
+  '#845EF7',
+  '#339AF0',
+  '#FF922B',
+  '#20C997',
+  '#51CF66',
+  '#F06595',
+  '#4DABF7',
+  '#ADB5BD',
+  '#6366F1',
+];
+
 // ─── Category grid sheet ──────────────────────────────────────────────────────
 
-class _CategorySheet extends StatelessWidget {
-  final List<Category> categories;
-  const _CategorySheet({required this.categories});
+class _CategorySheet extends ConsumerWidget {
+  const _CategorySheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categoriesAsync = ref.watch(categoriesProvider);
+
+    return categoriesAsync.when(
+      loading: () => const SizedBox(
+        height: 200,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, _) => SizedBox(
+        height: 120,
+        child: Center(child: Text('Error: $e')),
+      ),
+      data: (categories) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.55,
+        minChildSize: 0.35,
+        maxChildSize: 0.85,
+        builder: (_, scrollCtrl) => Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).dividerColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Text('Select Category',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final created = await showModalBottomSheet<Category>(
+                        context: context,
+                        isScrollControlled: true,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.vertical(top: Radius.circular(20)),
+                        ),
+                        builder: (_) => const _CreateCategorySheet(),
+                      );
+                      if (created != null && context.mounted) {
+                        Navigator.pop(context, created);
+                      }
+                    },
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('New'),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: GridView.builder(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 0.85,
+                ),
+                itemCount: categories.length,
+                itemBuilder: (ctx, i) {
+                  final cat = categories[i];
+                  return GestureDetector(
+                    onTap: () => Navigator.pop(ctx, cat),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: cat.color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(cat.icon, color: cat.color, size: 26),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(cat.name,
+                            style: const TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.w500),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Create category sheet ──────────────────────────────────────────────────────
+
+class _CreateCategorySheet extends ConsumerStatefulWidget {
+  const _CreateCategorySheet();
+
+  @override
+  ConsumerState<_CreateCategorySheet> createState() =>
+      _CreateCategorySheetState();
+}
+
+class _CreateCategorySheetState extends ConsumerState<_CreateCategorySheet> {
+  final _nameCtrl = TextEditingController();
+  String _iconKey = 'more_horiz';
+  String _colorHex = _categoryColorOptions.first;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Enter a category name');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final cat = await ref.read(categoriesNotifierProvider.notifier).createCategory(
+            name: name,
+            icon: _iconKey,
+            color: _colorHex,
+          );
+      if (mounted) Navigator.pop(context, cat);
+    } on ApiError catch (e) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = e.message;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const SizedBox(height: 12),
-        Container(
-          width: 36,
-          height: 4,
-          decoration: BoxDecoration(
-            color: Theme.of(context).dividerColor,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text('Select Category',
-            style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 12),
-        Flexible(
-          child: GridView.builder(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 0.85,
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).dividerColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-            itemCount: categories.length,
-            itemBuilder: (ctx, i) {
-              final cat = categories[i];
-              return GestureDetector(
-                onTap: () => Navigator.pop(ctx, cat),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
+          ),
+          const SizedBox(height: 16),
+          Text('New Category',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _nameCtrl,
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+              labelText: 'Name',
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Icon', style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: _categoryIconOptions.entries.map((e) {
+                final selected = _iconKey == e.key;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _iconKey = e.key),
+                    child: Container(
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
-                        color: cat.color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
+                        color: selected
+                            ? AC.accent.withValues(alpha: 0.15)
+                            : Theme.of(context).cardTheme.color,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: selected ? AC.accent : Theme.of(context).dividerColor,
+                        ),
                       ),
-                      child: Icon(cat.icon, color: cat.color, size: 26),
+                      child: Icon(e.value,
+                          size: 22,
+                          color: selected ? AC.accent : null),
                     ),
-                    const SizedBox(height: 6),
-                    Text(cat.name,
-                        style: const TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.w500),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
-                  ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Color', style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: _categoryColorOptions.map((hex) {
+              final color = Category.fromJson({
+                'color': hex,
+                'name': '',
+                'icon': '',
+              }).color;
+              final selected = _colorHex == hex;
+              return GestureDetector(
+                onTap: () => setState(() => _colorHex = hex),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: selected ? Colors.black87 : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: selected
+                      ? const Icon(Icons.check, color: Colors.white, size: 18)
+                      : null,
                 ),
               );
-            },
+            }).toList(),
           ),
-        ),
-      ],
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(_error!,
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.error, fontSize: 13)),
+          ],
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _saving ? null : _submit,
+              style: FilledButton.styleFrom(
+                backgroundColor: AC.accent,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('Create Category'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Manage categories (profile) ────────────────────────────────────────────────
+
+class _ManageCategoriesSheet extends ConsumerWidget {
+  const _ManageCategoriesSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categoriesAsync = ref.watch(categoriesProvider);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      minChildSize: 0.35,
+      maxChildSize: 0.9,
+      builder: (_, scrollCtrl) => Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Theme.of(context).dividerColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Text('Manage Categories',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () async {
+                    await showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(20)),
+                      ),
+                      builder: (_) => const _CreateCategorySheet(),
+                    );
+                  },
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('New'),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: categoriesAsync.when(
+              loading: () =>
+                  const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+              data: (categories) => ListView.builder(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                itemCount: categories.length,
+                itemBuilder: (ctx, i) {
+                  final cat = categories[i];
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: cat.color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(cat.icon, color: cat.color, size: 20),
+                    ),
+                    title: Text(cat.name),
+                    subtitle: cat.isDefault
+                        ? const Text('Default', style: TextStyle(fontSize: 12))
+                        : null,
+                    trailing: cat.isDefault
+                        ? null
+                        : IconButton(
+                            icon: Icon(Icons.delete_outline,
+                                color: Theme.of(context).colorScheme.error),
+                            onPressed: () async {
+                              try {
+                                await ref
+                                    .read(categoriesNotifierProvider.notifier)
+                                    .deleteCategory(cat.id);
+                              } on ApiError catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(e.message)),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -966,8 +1443,7 @@ class _TransactionSheetState extends State<_TransactionSheet> {
                   borderRadius:
                       BorderRadius.vertical(top: Radius.circular(20)),
                 ),
-                builder: (_) =>
-                    _CategorySheet(categories: widget.categories),
+                builder: (_) => const _CategorySheet(),
               );
               if (result != null) setState(() => _categoryId = result.id);
             },
@@ -1114,13 +1590,22 @@ class _ProfileSheetState extends ConsumerState<_ProfileSheet> {
       await GmailReader.signOut();
       setState(() => _gmailConnected = false);
     } else {
-      final account = await GmailReader.signIn();
-      setState(() => _gmailConnected = account != null);
-      if (account != null && mounted) {
-        Navigator.pop(context);
-        ref
-            .read(todayProvider.notifier)
-            .load(ref.read(todayProvider).date, forceRescan: true);
+      try {
+        final account = await GmailReader.signIn();
+        setState(() => _gmailConnected = account != null);
+        if (account != null && mounted) {
+          Navigator.pop(context);
+          await ref.read(todayProvider.notifier).onGmailConnected();
+        }
+      } on GmailReaderException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.message),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       }
     }
   }
@@ -1183,11 +1668,13 @@ class _ProfileSheetState extends ConsumerState<_ProfileSheet> {
             ),
             title: const Text('Gmail'),
             subtitle: Text(
-              _gmailConnected == null
-                  ? 'Checking…'
-                  : _gmailConnected!
-                      ? 'Connected'
-                      : 'Not connected',
+              !GmailReader.isConfigured
+                  ? 'Setup required (GOOGLE_SETUP.md)'
+                  : _gmailConnected == null
+                      ? 'Checking…'
+                      : _gmailConnected!
+                          ? 'Connected'
+                          : 'Not connected',
               style: TextStyle(
                 color: _gmailConnected == true
                     ? AC.credit
@@ -1210,6 +1697,32 @@ class _ProfileSheetState extends ConsumerState<_ProfileSheet> {
                     child:
                         Text(_gmailConnected! ? 'Disconnect' : 'Connect'),
                   ),
+          ),
+          const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.category_outlined, color: cs.primary, size: 20),
+            ),
+            title: const Text('Manage Categories'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                shape: const RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                builder: (_) => const _ManageCategoriesSheet(),
+              );
+            },
           ),
           const SizedBox(height: 8),
           const Divider(),

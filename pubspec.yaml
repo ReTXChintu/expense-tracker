@@ -40,14 +40,39 @@ dependencies:
   # HTML rendering (Gmail email bodies)
   flutter_widget_from_html_core: ^0.15.1
 
+  # Environment
+  flutter_dotenv: ^5.2.1
+
   # Utils
   intl: ^0.20.2
   cupertino_icons: ^1.0.8
+  flutter_native_splash: ^2.4.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/
+    - .env
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/branding/app_icon.png
+  adaptive_icon_background: "#4361EE"
+  adaptive_icon_foreground: assets/branding/app_icon.png
+  remove_alpha_ios: true
+
+# Solid color only — logo size is controlled in lib/widgets/branded_splash.dart
+flutter_native_splash:
+  color: "#F5F6FA"
+  android_12:
+    color: "#F5F6FA"
+  ios: true
+  android: true
+  web: false

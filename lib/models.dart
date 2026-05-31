@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'core/transaction_source_notes.dart';
 
 // ─── User ────────────────────────────────────────────────────────────────────
 
@@ -23,12 +24,14 @@ class Category {
   final String name;
   final IconData icon;
   final Color color;
+  final bool isDefault;
 
   const Category({
     required this.id,
     required this.name,
     required this.icon,
     required this.color,
+    this.isDefault = false,
   });
 
   factory Category.fromJson(Map<String, dynamic> j) => Category(
@@ -36,6 +39,7 @@ class Category {
         name: j['name'] ?? '',
         icon: _icon(j['icon'] ?? ''),
         color: _color(j['color'] ?? '#6366F1'),
+        isDefault: j['isDefault'] == true,
       );
 
   static IconData _icon(String name) => switch (name.toLowerCase()) {
@@ -48,6 +52,12 @@ class Category {
         'school' || 'book' || 'menu_book' => Icons.school,
         'bolt' || 'water_drop' || 'wifi' => Icons.bolt,
         'flight' || 'hotel' || 'travel_explore' => Icons.flight,
+        'local_gas_station' => Icons.local_gas_station,
+        'receipt_long' => Icons.receipt_long,
+        'trending_up' => Icons.trending_up,
+        'pets' => Icons.pets,
+        'fitness_center' => Icons.fitness_center,
+        'child_care' => Icons.child_care,
         'more_horiz' || 'category' => Icons.category,
         _ => Icons.category,
       };
@@ -92,6 +102,46 @@ class Transaction {
   bool get isSaved => id != null;
   bool get isCategorized => categoryId != null;
 
+  Map<TxSource, String> get sourceTexts =>
+      TransactionSourceNotes.parse(rawText, primary: source);
+
+  List<TxSource> get sources => TransactionSourceNotes.orderedSources(sourceTexts);
+
+  bool get hasMultipleSources => sources.length > 1;
+
+  String? textForSource(TxSource s) => sourceTexts[s];
+
+  /// Merge two rows for the same payment (SMS + email) into one.
+  static Transaction merge(Transaction a, Transaction b) {
+    final parts = <TxSource, String>{...a.sourceTexts, ...b.sourceTexts};
+    final merchant = _pickMerchant(a.merchant, b.merchant);
+    return Transaction(
+      id: a.id ?? b.id,
+      merchant: merchant,
+      amount: a.amount,
+      isDebit: a.isDebit,
+      date: a.date.isAfter(b.date) ? a.date : b.date,
+      categoryId: a.categoryId ?? b.categoryId,
+      category: a.category ?? b.category,
+      source: parts.containsKey(TxSource.sms)
+          ? TxSource.sms
+          : (parts.containsKey(TxSource.gmail) ? TxSource.gmail : a.source),
+      rawText: TransactionSourceNotes.encode(parts),
+    );
+  }
+
+  static String _pickMerchant(String a, String b) {
+    bool ok(String m) =>
+        m.trim().isNotEmpty && m.trim().toLowerCase() != 'unknown';
+    if (ok(a) && !ok(b)) return a;
+    if (ok(b) && !ok(a)) return b;
+    if (ok(a) && ok(b)) return a.length >= b.length ? a : b;
+    return a;
+  }
+
+  String? get noteForApi =>
+      rawText == null ? null : _noteText(rawText!);
+
   Transaction withCategory(String catId) => Transaction(
         id: id,
         merchant: merchant,
@@ -128,7 +178,7 @@ class Transaction {
       category: cat is Map ? Category.fromJson(cat as Map<String, dynamic>) : null,
       source: switch (j['source']) {
         'sms' => TxSource.sms,
-        'gmail' => TxSource.gmail,
+        'gmail' || 'email' => TxSource.gmail,
         _ => TxSource.manual,
       },
       rawText: j['note'] as String?,
@@ -143,9 +193,14 @@ class Transaction {
         'date': DateTime.fromMillisecondsSinceEpoch(
                 date.millisecondsSinceEpoch, isUtc: true)
             .toIso8601String(),
-        'source': source.name,
+        'source': _apiSource(source),
         if (categoryId != null) 'categoryId': categoryId,
         if (rawText != null) 'note': _noteText(rawText!),
+      };
+
+  static String _apiSource(TxSource s) => switch (s) {
+        TxSource.gmail => 'email',
+        _ => s.name,
       };
 
   static String _noteText(String raw) {

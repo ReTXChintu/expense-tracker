@@ -1,15 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'providers.dart';
 import 'theme.dart';
 import 'screens/login.dart';
 import 'screens/shell.dart';
+import 'widgets/branded_splash.dart';
 
-class App extends ConsumerWidget {
+class App extends ConsumerStatefulWidget {
   const App({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<App> createState() => _AppState();
+}
+
+class _AppState extends ConsumerState<App> {
+  bool _showSplash = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Drop Android 12 system splash (launcher icon) as soon as Flutter paints.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FlutterNativeSplash.remove();
+    });
+    _hideSplash();
+  }
+
+  Future<void> _hideSplash() async {
+    await Future.delayed(const Duration(milliseconds: 1200));
+    if (!mounted) return;
+    setState(() => _showSplash = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final loggedIn = ref.watch(isLoggedInProvider);
     return MaterialApp(
       title: 'SpendLog',
@@ -17,6 +42,15 @@ class App extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
+      builder: (context, child) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            if (child != null) child,
+            if (_showSplash) const BrandedSplashOverlay(),
+          ],
+        );
+      },
       home: loggedIn ? const MainShell() : const LoginScreen(),
     );
   }
