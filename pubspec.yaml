@@ -1,0 +1,53 @@
+name: expense_tracker
+description: Simple daily expense logger with SMS and Gmail integration
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.9.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # HTTP
+  dio: ^5.7.0
+  http: ^1.2.2
+
+  # Storage
+  flutter_secure_storage: ^9.2.2
+
+  # Charts
+  fl_chart: ^1.0.0
+
+  # Notifications + scheduling
+  flutter_local_notifications: ^17.2.1
+  timezone: ^0.9.4
+
+  # SMS reading (Android)
+  flutter_sms_inbox: ^1.0.3
+
+  # Gmail OAuth
+  google_sign_in: ^6.2.1
+  googleapis: ^13.0.0
+
+  # Permissions
+  permission_handler: ^11.3.1
+
+  # HTML rendering (Gmail email bodies)
+  flutter_widget_from_html_core: ^0.15.1
+
+  # Utils
+  intl: ^0.20.2
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
