@@ -43,12 +43,29 @@ class _Body extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
-        // Monthly total card
         _SummaryCard(
           label: 'Spent in $monthName',
-          value: '₹${data.monthTotal.toStringAsFixed(0)}',
+          value: _inr(data.monthTotal),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _KpiTile(
+                title: 'Last month',
+                value: _inr(data.lastMonthTotal),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _KpiTile(
+                title: 'Daily avg',
+                value: _inr(data.avgDailyThisMonth),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
 
         // This week
         _Card(
@@ -62,10 +79,25 @@ class _Body extends StatelessWidget {
           title: 'This Year',
           child: _YearChart(monthTotals: data.monthTotals),
         ),
+        const SizedBox(height: 16),
+        _Card(
+          title: 'Category wise spend (this month)',
+          child: _CategoryBreakdown(
+            rows: data.monthCategorySpends.take(6).toList(),
+            monthTotal: data.monthTotal,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _Card(
+          title: 'Top merchants (this month)',
+          child: _TopMerchants(rows: data.topMerchants),
+        ),
       ],
     );
   }
 }
+
+String _inr(double amount) => '₹${amount.toStringAsFixed(0)}';
 
 class _SummaryCard extends StatelessWidget {
   final String label;
@@ -87,15 +119,19 @@ class _SummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: const TextStyle(
-                  color: Colors.white70, fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
           const SizedBox(height: 4),
-          Text(value,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 30,
-                  fontWeight: FontWeight.w800)),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );
@@ -123,6 +159,179 @@ class _Card extends StatelessWidget {
           child,
         ],
       ),
+    );
+  }
+}
+
+class _KpiTile extends StatelessWidget {
+  final String title;
+  final String value;
+  const _KpiTile({required this.title, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryBreakdown extends StatelessWidget {
+  final List<CategorySpend> rows;
+  final double monthTotal;
+  const _CategoryBreakdown({required this.rows, required this.monthTotal});
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty || monthTotal <= 0) {
+      return const Text('No debit transactions this month.');
+    }
+
+    return Column(
+      children: rows.map((row) {
+        final pct = (row.amount / monthTotal).clamp(0, 1).toDouble();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      row.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  Text(
+                    '${(pct * 100).toStringAsFixed(0)}%',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _inr(row.amount),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  value: pct,
+                  minHeight: 6,
+                  backgroundColor: Theme.of(context).dividerColor,
+                  valueColor: const AlwaysStoppedAnimation<Color>(AC.accent),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _TopMerchants extends StatelessWidget {
+  final List<MerchantSpend> rows;
+  const _TopMerchants({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) return const Text('No debit transactions this month.');
+    final maxAmount = rows.first.amount <= 0 ? 1.0 : rows.first.amount;
+
+    return Column(
+      children: rows.asMap().entries.map((entry) {
+        final i = entry.key;
+        final row = entry.value;
+        final pct = (row.amount / maxAmount).clamp(0, 1).toDouble();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AC.accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${i + 1}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            row.merchant,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        Text(
+                          _inr(row.amount),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: pct,
+                        minHeight: 6,
+                        backgroundColor: Theme.of(context).dividerColor,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          AC.accent,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${row.count} transaction${row.count == 1 ? '' : 's'}',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }
@@ -166,17 +375,22 @@ class _WeekChart extends StatelessWidget {
                 reservedSize: 24,
                 getTitlesWidget: (v, _) => Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(labels[v.toInt()],
-                      style: Theme.of(context).textTheme.labelSmall),
+                  child: Text(
+                    labels[v.toInt()],
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
                 ),
               ),
             ),
             leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false)),
+              sideTitles: SideTitles(showTitles: false),
+            ),
             topTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false)),
+              sideTitles: SideTitles(showTitles: false),
+            ),
             rightTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false)),
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
           gridData: FlGridData(
             show: true,
@@ -197,8 +411,9 @@ class _WeekChart extends StatelessWidget {
                 BarChartRodData(
                   toY: weekTotals[i],
                   width: 24,
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(6)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(6),
+                  ),
                   color: isToday
                       ? AC.accent
                       : AC.accent.withValues(alpha: 0.35),
@@ -220,14 +435,11 @@ class _YearChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxVal =
-        monthTotals.fold<double>(0, (m, v) => v > m ? v : m);
+    final maxVal = monthTotals.fold<double>(0, (m, v) => v > m ? v : m);
     final effectiveMax = maxVal < 1 ? 1000.0 : maxVal * 1.3;
     final currentMonth = DateTime.now().month - 1;
 
-    const labels = [
-      'J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'
-    ];
+    const labels = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 
     return SizedBox(
       height: 160,
@@ -239,8 +451,9 @@ class _YearChart extends StatelessWidget {
               getTooltipColor: (_) =>
                   Theme.of(context).cardTheme.color ?? Colors.white,
               getTooltipItem: (group, _, rod, __) {
-                final month = DateFormat('MMM').format(
-                    DateTime(DateTime.now().year, group.x + 1));
+                final month = DateFormat(
+                  'MMM',
+                ).format(DateTime(DateTime.now().year, group.x + 1));
                 return BarTooltipItem(
                   '$month\n₹${rod.toY.toStringAsFixed(0)}',
                   const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
@@ -255,17 +468,22 @@ class _YearChart extends StatelessWidget {
                 reservedSize: 24,
                 getTitlesWidget: (v, _) => Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(labels[v.toInt()],
-                      style: Theme.of(context).textTheme.labelSmall),
+                  child: Text(
+                    labels[v.toInt()],
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
                 ),
               ),
             ),
             leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false)),
+              sideTitles: SideTitles(showTitles: false),
+            ),
             topTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false)),
+              sideTitles: SideTitles(showTitles: false),
+            ),
             rightTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false)),
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
           gridData: FlGridData(
             show: true,
@@ -285,8 +503,9 @@ class _YearChart extends StatelessWidget {
                 BarChartRodData(
                   toY: monthTotals[i],
                   width: 16,
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(5)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(5),
+                  ),
                   color: i == currentMonth
                       ? AC.accent
                       : AC.accent.withValues(alpha: 0.35),

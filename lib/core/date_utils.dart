@@ -1,7 +1,14 @@
 // Local calendar-day helpers for Today screen scan and transaction dates.
 
-DateTime normalizeCalendarDate(DateTime d) =>
-    DateTime(d.year, d.month, d.day);
+/// Parse API ISO timestamps (UTC `Z`) into device local time for display.
+DateTime parseApiDateTime(dynamic raw) {
+  if (raw == null) return DateTime.now();
+  final parsed = DateTime.tryParse(raw.toString());
+  if (parsed == null) return DateTime.now();
+  return parsed.isUtc ? parsed.toLocal() : parsed;
+}
+
+DateTime normalizeCalendarDate(DateTime d) => DateTime(d.year, d.month, d.day);
 
 bool isSameCalendarDay(DateTime a, DateTime b) {
   final na = normalizeCalendarDate(a);

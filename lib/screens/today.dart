@@ -8,6 +8,8 @@ import '../theme.dart';
 import '../core/gmail_reader.dart';
 import '../core/date_utils.dart';
 import '../core/api.dart';
+import '../widgets/app_version_label.dart';
+import '../widgets/notification_status_card.dart';
 
 class TodayScreen extends ConsumerWidget {
   const TodayScreen({super.key});
@@ -30,13 +32,15 @@ class TodayScreen extends ConsumerWidget {
           categories: cats,
           date: state.date,
           onSave: (merchant, amount, isDebit, categoryId) async {
-            await ref.read(todayProvider.notifier).createTransaction(
-              merchant: merchant,
-              amount: amount,
-              isDebit: isDebit,
-              categoryId: categoryId,
-              date: state.date,
-            );
+            await ref
+                .read(todayProvider.notifier)
+                .createTransaction(
+                  merchant: merchant,
+                  amount: amount,
+                  isDebit: isDebit,
+                  categoryId: categoryId,
+                  date: state.date,
+                );
           },
         ),
       );
@@ -61,8 +65,9 @@ class TodayScreen extends ConsumerWidget {
             icon: const Icon(Icons.chevron_left),
             tooltip: 'Previous day',
             onPressed: () {
-              final prev = normalizeCalendarDate(state.date)
-                  .subtract(const Duration(days: 1));
+              final prev = normalizeCalendarDate(
+                state.date,
+              ).subtract(const Duration(days: 1));
               ref.read(todayProvider.notifier).goToDate(prev);
             },
           ),
@@ -71,8 +76,9 @@ class TodayScreen extends ConsumerWidget {
               icon: const Icon(Icons.chevron_right),
               tooltip: 'Next day',
               onPressed: () {
-                final next = normalizeCalendarDate(state.date)
-                    .add(const Duration(days: 1));
+                final next = normalizeCalendarDate(
+                  state.date,
+                ).add(const Duration(days: 1));
                 ref.read(todayProvider.notifier).goToDate(next);
               },
             ),
@@ -82,8 +88,8 @@ class TodayScreen extends ConsumerWidget {
             onPressed: (state.loading || state.scanning)
                 ? null
                 : () => ref
-                    .read(todayProvider.notifier)
-                    .load(state.date, forceRescan: true),
+                      .read(todayProvider.notifier)
+                      .load(state.date, forceRescan: true),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -92,18 +98,20 @@ class TodayScreen extends ConsumerWidget {
                 context: context,
                 isScrollControlled: true,
                 shape: const RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(20)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 builder: (_) => const _ProfileSheet(),
               ),
               child: CircleAvatar(
                 radius: 16,
-                backgroundColor:
-                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
-                child: Icon(Icons.person_outline,
-                    size: 18,
-                    color: Theme.of(context).colorScheme.primary),
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.12),
+                child: Icon(
+                  Icons.person_outline,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
             ),
           ),
@@ -178,13 +186,15 @@ class _BodyState extends ConsumerState<_Body> {
         date: widget.state.date,
         onSave: (merchant, amount, isDebit, categoryId) async {
           if (existing != null) {
-            await ref.read(todayProvider.notifier).updateSaved(
-              existing.id!,
-              merchant: merchant,
-              amount: amount,
-              isDebit: isDebit,
-              categoryId: categoryId,
-            );
+            await ref
+                .read(todayProvider.notifier)
+                .updateSaved(
+                  existing.id!,
+                  merchant: merchant,
+                  amount: amount,
+                  isDebit: isDebit,
+                  categoryId: categoryId,
+                );
           }
         },
       ),
@@ -196,10 +206,12 @@ class _BodyState extends ConsumerState<_Body> {
     final state = widget.state;
     final cats = widget.categories;
 
-    final uncategorized =
-        state.transactions.where((t) => !t.isCategorized).toList();
-    final categorized =
-        state.transactions.where((t) => t.isCategorized).toList();
+    final uncategorized = state.transactions
+        .where((t) => !t.isCategorized)
+        .toList();
+    final categorized = state.transactions
+        .where((t) => t.isCategorized)
+        .toList();
 
     final debitTotal = categorized
         .where((t) => t.isDebit)
@@ -221,8 +233,7 @@ class _BodyState extends ConsumerState<_Body> {
           SliverToBoxAdapter(
             child: Container(
               margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: AC.accent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
@@ -236,10 +247,13 @@ class _BodyState extends ConsumerState<_Body> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                   const SizedBox(width: 10),
-                  Text('Scanning messages and Gmail…',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.primary)),
+                  Text(
+                    'Scanning messages and Gmail…',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -252,16 +266,18 @@ class _BodyState extends ConsumerState<_Body> {
               margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .error
-                    .withValues(alpha: 0.1),
+                color: Theme.of(
+                  context,
+                ).colorScheme.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Text(state.error!,
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 13)),
+              child: Text(
+                state.error!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 13,
+                ),
+              ),
             ),
           ),
 
@@ -272,25 +288,22 @@ class _BodyState extends ConsumerState<_Body> {
             subtitle: 'Tap the chip to assign a category',
           ),
           SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (ctx, i) {
-                final tx = uncategorized[i];
-                return _Deletable(
-                  key: ValueKey('u_${tx.id}'),
-                  onDelete: () =>
-                      ref.read(todayProvider.notifier).deleteSaved(tx.id!),
-                  child: _TxTile(
-                    tx: tx,
-                    categories: cats,
-                    onCategory: (catId) => ref
-                        .read(todayProvider.notifier)
-                        .updateSaved(tx.id!, categoryId: catId),
-                    onEdit: () => _openSheet(existing: tx, isSaved: true),
-                  ),
-                );
-              },
-              childCount: uncategorized.length,
-            ),
+            delegate: SliverChildBuilderDelegate((ctx, i) {
+              final tx = uncategorized[i];
+              return _Deletable(
+                key: ValueKey('u_${tx.id}'),
+                onDelete: () =>
+                    ref.read(todayProvider.notifier).deleteSaved(tx.id!),
+                child: _TxTile(
+                  tx: tx,
+                  categories: cats,
+                  onCategory: (catId) => ref
+                      .read(todayProvider.notifier)
+                      .updateSaved(tx.id!, categoryId: catId),
+                  onEdit: () => _openSheet(existing: tx, isSaved: true),
+                ),
+              );
+            }, childCount: uncategorized.length),
           ),
         ],
 
@@ -303,25 +316,22 @@ class _BodyState extends ConsumerState<_Body> {
                 : 'All categorized',
           ),
           SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (ctx, i) {
-                final tx = categorized[i];
-                return _Deletable(
-                  key: ValueKey('c_${tx.id}'),
-                  onDelete: () =>
-                      ref.read(todayProvider.notifier).deleteSaved(tx.id!),
-                  child: _TxTile(
-                    tx: tx,
-                    categories: cats,
-                    onCategory: (catId) => ref
-                        .read(todayProvider.notifier)
-                        .updateSaved(tx.id!, categoryId: catId),
-                    onEdit: () => _openSheet(existing: tx, isSaved: true),
-                  ),
-                );
-              },
-              childCount: categorized.length,
-            ),
+            delegate: SliverChildBuilderDelegate((ctx, i) {
+              final tx = categorized[i];
+              return _Deletable(
+                key: ValueKey('c_${tx.id}'),
+                onDelete: () =>
+                    ref.read(todayProvider.notifier).deleteSaved(tx.id!),
+                child: _TxTile(
+                  tx: tx,
+                  categories: cats,
+                  onCategory: (catId) => ref
+                      .read(todayProvider.notifier)
+                      .updateSaved(tx.id!, categoryId: catId),
+                  onEdit: () => _openSheet(existing: tx, isSaved: true),
+                ),
+              );
+            }, childCount: categorized.length),
           ),
         ],
 
@@ -332,14 +342,21 @@ class _BodyState extends ConsumerState<_Body> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.receipt_long_outlined,
-                      size: 56, color: Colors.grey),
+                  Icon(
+                    Icons.receipt_long_outlined,
+                    size: 56,
+                    color: Colors.grey,
+                  ),
                   SizedBox(height: 12),
-                  Text('No transactions for this day',
-                      style: TextStyle(fontSize: 15)),
+                  Text(
+                    'No transactions for this day',
+                    style: TextStyle(fontSize: 15),
+                  ),
                   SizedBox(height: 4),
-                  Text('Tap + to add one manually',
-                      style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  Text(
+                    'Tap + to add one manually',
+                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
                 ],
               ),
             ),
@@ -384,10 +401,7 @@ class _Deletable extends StatelessWidget {
 class _GmailBanner extends StatelessWidget {
   final VoidCallback onConnect;
   final bool notConfigured;
-  const _GmailBanner({
-    required this.onConnect,
-    this.notConfigured = false,
-  });
+  const _GmailBanner({required this.onConnect, this.notConfigured = false});
 
   @override
   Widget build(BuildContext context) {
@@ -414,9 +428,9 @@ class _GmailBanner extends StatelessWidget {
           TextButton(
             onPressed: onConnect,
             style: TextButton.styleFrom(
-                foregroundColor: AC.gmailColor,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+              foregroundColor: AC.gmailColor,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            ),
             child: Text(notConfigured ? 'Info' : 'Connect'),
           ),
         ],
@@ -439,16 +453,19 @@ class _SectionHeader extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
         child: Row(
           children: [
-            Text(title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontSize: 14)),
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontSize: 14),
+            ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(subtitle,
-                  style: Theme.of(context).textTheme.bodySmall,
-                  overflow: TextOverflow.ellipsis),
+              child: Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -514,13 +531,14 @@ class _TxTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(tx.merchant,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyLarge
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      tx.merchant,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     ..._sourcePreviews(context, tx),
                     const SizedBox(height: 6),
                     _CategoryPicker(
@@ -543,10 +561,11 @@ class _TxTile extends StatelessWidget {
                       onTap: onEdit,
                       child: Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: Icon(Icons.edit_outlined,
-                            size: 14,
-                            color:
-                                Theme.of(context).textTheme.bodySmall?.color),
+                        child: Icon(
+                          Icons.edit_outlined,
+                          size: 14,
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                        ),
                       ),
                     ),
                   Text(
@@ -558,7 +577,7 @@ class _TxTile extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    DateFormat('h:mm a').format(tx.date),
+                    DateFormat('h:mm a').format(tx.date.toLocal()),
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ],
@@ -645,8 +664,8 @@ class _TxTile extends StatelessWidget {
                       tx.hasMultipleSources
                           ? 'SMS & Email'
                           : (tx.sources.first == TxSource.sms
-                              ? 'SMS Message'
-                              : 'Email'),
+                                ? 'SMS Message'
+                                : 'Email'),
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
@@ -686,28 +705,27 @@ class _TxTile extends StatelessWidget {
           children: [
             Icon(icon, size: 16, color: color),
             const SizedBox(width: 6),
-            Text(title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(color: color)),
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(color: color),
+            ),
           ],
         ),
         const SizedBox(height: 8),
         isHtml
             ? HtmlWidget(
                 raw,
-                textStyle: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(height: 1.5),
+                textStyle: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(height: 1.5),
               )
             : Text(
                 raw,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(height: 1.5),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(height: 1.5),
               ),
       ],
     );
@@ -745,8 +763,11 @@ class _SourceIndicators extends StatelessWidget {
     );
   }
 
-  Widget _sourceChip(TxSource source,
-      {bool compact = false, bool small = false}) {
+  Widget _sourceChip(
+    TxSource source, {
+    bool compact = false,
+    bool small = false,
+  }) {
     final color = switch (source) {
       TxSource.sms => AC.smsColor,
       TxSource.gmail => AC.gmailColor,
@@ -778,8 +799,11 @@ class _CategoryPicker extends ConsumerWidget {
   final Category? selected;
   final void Function(String)? onSelect;
 
-  const _CategoryPicker(
-      {required this.categories, this.selected, this.onSelect});
+  const _CategoryPicker({
+    required this.categories,
+    this.selected,
+    this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -804,21 +828,27 @@ class _CategoryPicker extends ConsumerWidget {
             if (selected != null) ...[
               Icon(selected!.icon, size: 12, color: selected!.color),
               const SizedBox(width: 4),
-              Text(selected!.name,
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: selected!.color,
-                      fontWeight: FontWeight.w500)),
+              Text(
+                selected!.name,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: selected!.color,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ] else ...[
-              Icon(Icons.add,
-                  size: 12,
-                  color: Theme.of(context).textTheme.bodySmall?.color),
+              Icon(
+                Icons.add,
+                size: 12,
+                color: Theme.of(context).textTheme.bodySmall?.color,
+              ),
               const SizedBox(width: 4),
-              Text('Add category',
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelSmall
-                      ?.copyWith(fontSize: 12)),
+              Text(
+                'Add category',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelSmall?.copyWith(fontSize: 12),
+              ),
             ],
           ],
         ),
@@ -884,10 +914,8 @@ class _CategorySheet extends ConsumerWidget {
         height: 200,
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (e, _) => SizedBox(
-        height: 120,
-        child: Center(child: Text('Error: $e')),
-      ),
+      error: (e, _) =>
+          SizedBox(height: 120, child: Center(child: Text('Error: $e'))),
       data: (categories) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.55,
@@ -908,8 +936,10 @@ class _CategorySheet extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: Row(
                 children: [
-                  Text('Select Category',
-                      style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Select Category',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: () async {
@@ -917,8 +947,9 @@ class _CategorySheet extends ConsumerWidget {
                         context: context,
                         isScrollControlled: true,
                         shape: const RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.vertical(top: Radius.circular(20)),
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(20),
+                          ),
                         ),
                         builder: (_) => const _CreateCategorySheet(),
                       );
@@ -959,12 +990,16 @@ class _CategorySheet extends ConsumerWidget {
                           child: Icon(cat.icon, color: cat.color, size: 26),
                         ),
                         const SizedBox(height: 6),
-                        Text(cat.name,
-                            style: const TextStyle(
-                                fontSize: 11, fontWeight: FontWeight.w500),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis),
+                        Text(
+                          cat.name,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   );
@@ -1012,11 +1047,9 @@ class _CreateCategorySheetState extends ConsumerState<_CreateCategorySheet> {
       _error = null;
     });
     try {
-      final cat = await ref.read(categoriesNotifierProvider.notifier).createCategory(
-            name: name,
-            icon: _iconKey,
-            color: _colorHex,
-          );
+      final cat = await ref
+          .read(categoriesNotifierProvider.notifier)
+          .createCategory(name: name, icon: _iconKey, color: _colorHex);
       if (mounted) Navigator.pop(context, cat);
     } on ApiError catch (e) {
       if (mounted) {
@@ -1059,8 +1092,7 @@ class _CreateCategorySheetState extends ConsumerState<_CreateCategorySheet> {
             ),
           ),
           const SizedBox(height: 16),
-          Text('New Category',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text('New Category', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 16),
           TextField(
             controller: _nameCtrl,
@@ -1068,7 +1100,8 @@ class _CreateCategorySheetState extends ConsumerState<_CreateCategorySheet> {
             decoration: InputDecoration(
               labelText: 'Name',
               border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
               isDense: true,
             ),
           ),
@@ -1094,12 +1127,16 @@ class _CreateCategorySheetState extends ConsumerState<_CreateCategorySheet> {
                             : Theme.of(context).cardTheme.color,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: selected ? AC.accent : Theme.of(context).dividerColor,
+                          color: selected
+                              ? AC.accent
+                              : Theme.of(context).dividerColor,
                         ),
                       ),
-                      child: Icon(e.value,
-                          size: 22,
-                          color: selected ? AC.accent : null),
+                      child: Icon(
+                        e.value,
+                        size: 22,
+                        color: selected ? AC.accent : null,
+                      ),
                     ),
                   ),
                 );
@@ -1141,9 +1178,13 @@ class _CreateCategorySheetState extends ConsumerState<_CreateCategorySheet> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!,
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.error, fontSize: 13)),
+            Text(
+              _error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 13,
+              ),
+            ),
           ],
           const SizedBox(height: 20),
           SizedBox(
@@ -1159,7 +1200,10 @@ class _CreateCategorySheetState extends ConsumerState<_CreateCategorySheet> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Text('Create Category'),
             ),
           ),
@@ -1198,8 +1242,10 @@ class _ManageCategoriesSheet extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
-                Text('Manage Categories',
-                    style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  'Manage Categories',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: () async {
@@ -1207,8 +1253,9 @@ class _ManageCategoriesSheet extends ConsumerWidget {
                       context: context,
                       isScrollControlled: true,
                       shape: const RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.vertical(top: Radius.circular(20)),
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(20),
+                        ),
                       ),
                       builder: (_) => const _CreateCategorySheet(),
                     );
@@ -1221,8 +1268,7 @@ class _ManageCategoriesSheet extends ConsumerWidget {
           ),
           Expanded(
             child: categoriesAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (categories) => ListView.builder(
                 controller: scrollCtrl,
@@ -1248,8 +1294,10 @@ class _ManageCategoriesSheet extends ConsumerWidget {
                     trailing: cat.isDefault
                         ? null
                         : IconButton(
-                            icon: Icon(Icons.delete_outline,
-                                color: Theme.of(context).colorScheme.error),
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
                             onPressed: () async {
                               try {
                                 await ref
@@ -1282,8 +1330,12 @@ class _TransactionSheet extends StatefulWidget {
   final List<Category> categories;
   final DateTime date;
   final Future<void> Function(
-          String merchant, double amount, bool isDebit, String? categoryId)
-      onSave;
+    String merchant,
+    double amount,
+    bool isDebit,
+    String? categoryId,
+  )
+  onSave;
 
   const _TransactionSheet({
     this.existing,
@@ -1310,7 +1362,8 @@ class _TransactionSheetState extends State<_TransactionSheet> {
     final e = widget.existing;
     _merchantCtrl = TextEditingController(text: e?.merchant ?? '');
     _amountCtrl = TextEditingController(
-        text: e != null ? e.amount.toStringAsFixed(0) : '');
+      text: e != null ? e.amount.toStringAsFixed(0) : '',
+    );
     _isDebit = e?.isDebit ?? true;
     _categoryId = e?.categoryId;
   }
@@ -1324,8 +1377,7 @@ class _TransactionSheetState extends State<_TransactionSheet> {
 
   Future<void> _submit() async {
     final merchant = _merchantCtrl.text.trim();
-    final amount =
-        double.tryParse(_amountCtrl.text.replaceAll(',', '').trim());
+    final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '').trim());
     if (merchant.isEmpty) {
       setState(() => _error = 'Enter a payee / merchant name');
       return;
@@ -1413,7 +1465,8 @@ class _TransactionSheetState extends State<_TransactionSheet> {
             decoration: InputDecoration(
               labelText: 'Payee / Merchant',
               border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
               isDense: true,
             ),
           ),
@@ -1422,13 +1475,13 @@ class _TransactionSheetState extends State<_TransactionSheet> {
           // Amount
           TextField(
             controller: _amountCtrl,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
               labelText: 'Amount',
               prefixText: '₹  ',
               border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
               isDense: true,
             ),
           ),
@@ -1440,8 +1493,7 @@ class _TransactionSheetState extends State<_TransactionSheet> {
               final result = await showModalBottomSheet<Category>(
                 context: context,
                 shape: const RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(20)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 builder: (_) => const _CategorySheet(),
               );
@@ -1449,8 +1501,7 @@ class _TransactionSheetState extends State<_TransactionSheet> {
             },
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               decoration: BoxDecoration(
                 border: Border.all(color: Theme.of(context).dividerColor),
                 borderRadius: BorderRadius.circular(10),
@@ -1458,26 +1509,37 @@ class _TransactionSheetState extends State<_TransactionSheet> {
               child: Row(
                 children: [
                   if (selectedCat != null) ...[
-                    Icon(selectedCat.icon,
-                        size: 16, color: selectedCat.color),
+                    Icon(selectedCat.icon, size: 16, color: selectedCat.color),
                     const SizedBox(width: 8),
-                    Text(selectedCat.name,
-                        style: TextStyle(
-                            color: selectedCat.color,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 14)),
+                    Text(
+                      selectedCat.name,
+                      style: TextStyle(
+                        color: selectedCat.color,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                      ),
+                    ),
                   ] else ...[
-                    Icon(Icons.category_outlined,
-                        size: 16, color: Theme.of(context).hintColor),
+                    Icon(
+                      Icons.category_outlined,
+                      size: 16,
+                      color: Theme.of(context).hintColor,
+                    ),
                     const SizedBox(width: 8),
-                    Text('Category (optional)',
-                        style: TextStyle(
-                            color: Theme.of(context).hintColor,
-                            fontSize: 14)),
+                    Text(
+                      'Category (optional)',
+                      style: TextStyle(
+                        color: Theme.of(context).hintColor,
+                        fontSize: 14,
+                      ),
+                    ),
                   ],
                   const Spacer(),
-                  Icon(Icons.chevron_right,
-                      size: 18, color: Theme.of(context).hintColor),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: Theme.of(context).hintColor,
+                  ),
                 ],
               ),
             ),
@@ -1485,10 +1547,13 @@ class _TransactionSheetState extends State<_TransactionSheet> {
 
           if (_error != null) ...[
             const SizedBox(height: 8),
-            Text(_error!,
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontSize: 13)),
+            Text(
+              _error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 13,
+              ),
+            ),
           ],
 
           const SizedBox(height: 20),
@@ -1501,20 +1566,25 @@ class _TransactionSheetState extends State<_TransactionSheet> {
                 backgroundColor: AC.accent,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               child: _saving
                   ? const SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : Text(
                       isCreate ? 'Add Transaction' : 'Save Changes',
                       style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                     ),
             ),
           ),
@@ -1531,11 +1601,12 @@ class _TypeChip extends StatelessWidget {
   final bool selected;
   final Color color;
   final VoidCallback onTap;
-  const _TypeChip(
-      {required this.label,
-      required this.selected,
-      required this.color,
-      required this.onTap});
+  const _TypeChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1545,11 +1616,10 @@ class _TypeChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         decoration: BoxDecoration(
-          color: selected
-              ? color.withValues(alpha: 0.12)
-              : Colors.transparent,
+          color: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
           border: Border.all(
-              color: selected ? color : Theme.of(context).dividerColor),
+            color: selected ? color : Theme.of(context).dividerColor,
+          ),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -1643,14 +1713,11 @@ class _ProfileSheetState extends ConsumerState<_ProfileSheet> {
           ),
           const SizedBox(height: 12),
           if (user != null) ...[
-            Text(user.name,
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(user.name, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
-            Text(user.email,
-                style: Theme.of(context).textTheme.bodyMedium),
+            Text(user.email, style: Theme.of(context).textTheme.bodyMedium),
           ] else
-            Text('Profile',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text('Profile', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 24),
           const Divider(),
           const SizedBox(height: 8),
@@ -1663,18 +1730,21 @@ class _ProfileSheetState extends ConsumerState<_ProfileSheet> {
                 color: AC.gmailColor.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.mail_outline,
-                  color: AC.gmailColor, size: 20),
+              child: const Icon(
+                Icons.mail_outline,
+                color: AC.gmailColor,
+                size: 20,
+              ),
             ),
             title: const Text('Gmail'),
             subtitle: Text(
               !GmailReader.isConfigured
                   ? 'Setup required (GOOGLE_SETUP.md)'
                   : _gmailConnected == null
-                      ? 'Checking…'
-                      : _gmailConnected!
-                          ? 'Connected'
-                          : 'Not connected',
+                  ? 'Checking…'
+                  : _gmailConnected!
+                  ? 'Connected'
+                  : 'Not connected',
               style: TextStyle(
                 color: _gmailConnected == true
                     ? AC.credit
@@ -1686,7 +1756,8 @@ class _ProfileSheetState extends ConsumerState<_ProfileSheet> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : TextButton(
                     onPressed: _toggleGmail,
                     style: TextButton.styleFrom(
@@ -1694,10 +1765,11 @@ class _ProfileSheetState extends ConsumerState<_ProfileSheet> {
                           ? Theme.of(context).colorScheme.error
                           : cs.primary,
                     ),
-                    child:
-                        Text(_gmailConnected! ? 'Disconnect' : 'Connect'),
+                    child: Text(_gmailConnected! ? 'Disconnect' : 'Connect'),
                   ),
           ),
+          const SizedBox(height: 12),
+          const NotificationStatusCard(),
           const SizedBox(height: 8),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -1717,8 +1789,7 @@ class _ProfileSheetState extends ConsumerState<_ProfileSheet> {
                 context: context,
                 isScrollControlled: true,
                 shape: const RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(20)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 builder: (_) => const _ManageCategoriesSheet(),
               );
@@ -1733,23 +1804,51 @@ class _ProfileSheetState extends ConsumerState<_ProfileSheet> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .error
-                    .withValues(alpha: 0.10),
+                color: Theme.of(
+                  context,
+                ).colorScheme.error.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.logout,
-                  color: Theme.of(context).colorScheme.error, size: 20),
+              child: Icon(
+                Icons.logout,
+                color: Theme.of(context).colorScheme.error,
+                size: 20,
+              ),
             ),
-            title: Text('Logout',
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.error)),
+            title: Text(
+              'Logout',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
             onTap: () async {
-              Navigator.pop(context);
+              final shouldLogout =
+                  await showDialog<bool>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('Confirm logout'),
+                      content: const Text('Do you really want to logout?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          child: const Text('Logout'),
+                        ),
+                      ],
+                    ),
+                  ) ??
+                  false;
+              if (!shouldLogout) return;
+
+              if (context.mounted) Navigator.pop(context);
               await ref.read(authProvider.notifier).logout();
             },
           ),
+          const SizedBox(height: 20),
+          const Center(child: AppVersionLabel()),
         ],
       ),
     );

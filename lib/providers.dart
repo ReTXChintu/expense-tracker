@@ -30,8 +30,12 @@ class AuthNotifier extends StateNotifier<bool> {
   }
 
   Future<void> login(String email, String password) async {
-    final data = await _api.post('/auth/login',
-        data: {'email': email, 'password': password}) as Map<String, dynamic>;
+    final data =
+        await _api.post(
+              '/auth/login',
+              data: {'email': email, 'password': password},
+            )
+            as Map<String, dynamic>;
 
     final tokens = data['tokens'] as Map<String, dynamic>;
     await AppStorage.saveToken(tokens['accessToken'] as String);
@@ -46,9 +50,12 @@ class AuthNotifier extends StateNotifier<bool> {
   }
 
   Future<void> register(String name, String email, String password) async {
-    final data = await _api.post('/auth/register',
-        data: {'name': name, 'email': email, 'password': password})
-        as Map<String, dynamic>;
+    final data =
+        await _api.post(
+              '/auth/register',
+              data: {'name': name, 'email': email, 'password': password},
+            )
+            as Map<String, dynamic>;
 
     final tokens = data['tokens'] as Map<String, dynamic>;
     await AppStorage.saveToken(tokens['accessToken'] as String);
@@ -63,7 +70,9 @@ class AuthNotifier extends StateNotifier<bool> {
   }
 
   Future<void> logout() async {
-    try { await _api.post('/auth/logout'); } catch (_) {}
+    try {
+      await _api.post('/auth/logout');
+    } catch (_) {}
     await AppStorage.clearToken();
     await NotifManager.cancelAll();
     _ref.read(isLoggedInProvider.notifier).state = false;
@@ -72,11 +81,9 @@ class AuthNotifier extends StateNotifier<bool> {
   }
 }
 
-final authProvider =
-    StateNotifierProvider<AuthNotifier, bool>((ref) => AuthNotifier(
-          ref.watch(apiProvider),
-          ref,
-        ));
+final authProvider = StateNotifierProvider<AuthNotifier, bool>(
+  (ref) => AuthNotifier(ref.watch(apiProvider), ref),
+);
 
 // ─── Categories ───────────────────────────────────────────────────────────────
 
@@ -107,11 +114,12 @@ class CategoriesNotifier extends StateNotifier<AsyncValue<void>> {
   }) async {
     state = const AsyncValue.loading();
     try {
-      final res = await _api.post('/categories', data: {
-        'name': name,
-        'icon': icon,
-        'color': color,
-      }) as Map<String, dynamic>;
+      final res =
+          await _api.post(
+                '/categories',
+                data: {'name': name, 'icon': icon, 'color': color},
+              )
+              as Map<String, dynamic>;
       _ref.invalidate(categoriesProvider);
       state = const AsyncValue.data(null);
       return Category.fromJson(res);
@@ -135,8 +143,9 @@ class CategoriesNotifier extends StateNotifier<AsyncValue<void>> {
 }
 
 final categoriesNotifierProvider =
-    StateNotifierProvider<CategoriesNotifier, AsyncValue<void>>((ref) =>
-        CategoriesNotifier(ref.watch(apiProvider), ref));
+    StateNotifierProvider<CategoriesNotifier, AsyncValue<void>>(
+      (ref) => CategoriesNotifier(ref.watch(apiProvider), ref),
+    );
 
 // ─── Today screen ─────────────────────────────────────────────────────────────
 
@@ -162,14 +171,13 @@ class TodayState {
     bool? scanning,
     String? error,
     bool clearError = false,
-  }) =>
-      TodayState(
-        transactions: transactions ?? this.transactions,
-        date: date ?? this.date,
-        loading: loading ?? this.loading,
-        scanning: scanning ?? this.scanning,
-        error: clearError ? null : (error ?? this.error),
-      );
+  }) => TodayState(
+    transactions: transactions ?? this.transactions,
+    date: date ?? this.date,
+    loading: loading ?? this.loading,
+    scanning: scanning ?? this.scanning,
+    error: clearError ? null : (error ?? this.error),
+  );
 
   int get uncategorizedCount =>
       transactions.where((t) => !t.isCategorized).length;
@@ -232,10 +240,15 @@ Future<List<Transaction>> _consolidateTransactions(
         primary.hasMultipleSources &&
         !consumed.contains(primary.id)) {
       try {
-        final res = await api.patch('/transactions/${primary.id}', data: {
-          if (primary.noteForApi != null) 'note': primary.noteForApi,
-          'merchant': primary.merchant,
-        }) as Map<String, dynamic>;
+        final res =
+            await api.patch(
+                  '/transactions/${primary.id}',
+                  data: {
+                    if (primary.noteForApi != null) 'note': primary.noteForApi,
+                    'merchant': primary.merchant,
+                  },
+                )
+                as Map<String, dynamic>;
         primary = Transaction.fromJson(res);
       } catch (_) {}
     }
@@ -252,7 +265,9 @@ class TodayNotifier extends StateNotifier<TodayState> {
   final Ref _ref;
 
   TodayNotifier(this._api, this._ref)
-      : super(TodayState(date: normalizeCalendarDate(DateTime.now()), loading: true)) {
+    : super(
+        TodayState(date: normalizeCalendarDate(DateTime.now()), loading: true),
+      ) {
     load(DateTime.now());
   }
 
@@ -266,11 +281,16 @@ class TodayNotifier extends StateNotifier<TodayState> {
   }
 
   Future<List<Transaction>> _fetchTransactionsForDay(DateTime date) async {
-    final raw = await _api.get('/transactions', query: {
-      'startDate': _startUtc(date),
-      'endDate': _endUtc(date),
-      'limit': '200',
-    }) as List<dynamic>;
+    final raw =
+        await _api.get(
+              '/transactions',
+              query: {
+                'startDate': _startUtc(date),
+                'endDate': _endUtc(date),
+                'limit': '200',
+              },
+            )
+            as List<dynamic>;
     return raw
         .map((e) => Transaction.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -303,10 +323,15 @@ class TodayNotifier extends StateNotifier<TodayState> {
         if (_isDuplicateSameSource(match, tx)) continue;
         final merged = Transaction.merge(match, tx);
         try {
-          final res = await _api.patch('/transactions/${match.id}', data: {
-            if (merged.noteForApi != null) 'note': merged.noteForApi,
-            'merchant': merged.merchant,
-          }) as Map<String, dynamic>;
+          final res =
+              await _api.patch(
+                    '/transactions/${match.id}',
+                    data: {
+                      if (merged.noteForApi != null) 'note': merged.noteForApi,
+                      'merchant': merged.merchant,
+                    },
+                  )
+                  as Map<String, dynamic>;
           final idx = existing.indexWhere((e) => e.id == match.id);
           if (idx >= 0) {
             existing[idx] = Transaction.fromJson(res);
@@ -363,10 +388,18 @@ class TodayNotifier extends StateNotifier<TodayState> {
         return b.date.compareTo(a.date);
       });
 
-      state = state.copyWith(transactions: txs, loading: false, scanning: false);
+      state = state.copyWith(
+        transactions: txs,
+        loading: false,
+        scanning: false,
+      );
       await _checkMissedDay();
     } catch (e) {
-      state = state.copyWith(loading: false, scanning: false, error: e.toString());
+      state = state.copyWith(
+        loading: false,
+        scanning: false,
+        error: e.toString(),
+      );
     }
   }
 
@@ -385,12 +418,17 @@ class TodayNotifier extends StateNotifier<TodayState> {
   Future<void> _checkMissedDay() async {
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
     try {
-      final data = await _api.get('/transactions', query: {
-        'startDate': _startUtc(yesterday),
-        'endDate': _endUtc(yesterday),
-        'isUncategorized': 'true',
-        'limit': '10',
-      }) as List<dynamic>;
+      final data =
+          await _api.get(
+                '/transactions',
+                query: {
+                  'startDate': _startUtc(yesterday),
+                  'endDate': _endUtc(yesterday),
+                  'isUncategorized': 'true',
+                  'limit': '10',
+                },
+              )
+              as List<dynamic>;
       if (data.isNotEmpty) {
         await NotifManager.scheduleHalfHourlyNags();
       }
@@ -414,16 +452,22 @@ class TodayNotifier extends StateNotifier<TodayState> {
   }) async {
     try {
       final txDate = transactionTimestampForDay(date);
-      final res = await _api.post('/transactions', data: {
-        'merchant': merchant,
-        'amount': amount,
-        'type': isDebit ? 'debit' : 'credit',
-        'date': DateTime.fromMillisecondsSinceEpoch(
-                txDate.millisecondsSinceEpoch, isUtc: true)
-            .toIso8601String(),
-        'source': 'manual',
-        if (categoryId != null) 'categoryId': categoryId,
-      }) as Map<String, dynamic>;
+      final res =
+          await _api.post(
+                '/transactions',
+                data: {
+                  'merchant': merchant,
+                  'amount': amount,
+                  'type': isDebit ? 'debit' : 'credit',
+                  'date': DateTime.fromMillisecondsSinceEpoch(
+                    txDate.millisecondsSinceEpoch,
+                    isUtc: true,
+                  ).toIso8601String(),
+                  'source': 'manual',
+                  if (categoryId != null) 'categoryId': categoryId,
+                },
+              )
+              as Map<String, dynamic>;
       final tx = Transaction.fromJson(res);
       if (isSameCalendarDay(tx.date, state.date)) {
         final updated = [...state.transactions, tx];
@@ -456,10 +500,13 @@ class TodayNotifier extends StateNotifier<TodayState> {
       if (categoryId != null) data['categoryId'] = categoryId;
       if (data.isEmpty) return;
 
-      final res = await _api.patch('/transactions/$id', data: data)
-          as Map<String, dynamic>;
+      final res =
+          await _api.patch('/transactions/$id', data: data)
+              as Map<String, dynamic>;
       final updated = Transaction.fromJson(res);
-      final list = state.transactions.map((t) => t.id == id ? updated : t).toList();
+      final list = state.transactions
+          .map((t) => t.id == id ? updated : t)
+          .toList();
       list.sort((a, b) {
         if (a.isCategorized != b.isCategorized) {
           return a.isCategorized ? 1 : -1;
@@ -474,11 +521,9 @@ class TodayNotifier extends StateNotifier<TodayState> {
   }
 }
 
-final todayProvider =
-    StateNotifierProvider<TodayNotifier, TodayState>((ref) => TodayNotifier(
-          ref.watch(apiProvider),
-          ref,
-        ));
+final todayProvider = StateNotifierProvider<TodayNotifier, TodayState>(
+  (ref) => TodayNotifier(ref.watch(apiProvider), ref),
+);
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
@@ -488,21 +533,30 @@ String _startUtc(DateTime d) =>
 String _endUtc(DateTime d) =>
     DateTime(d.year, d.month, d.day, 23, 59, 59, 999).toUtc().toIso8601String();
 
-final dashboardProvider =
-    FutureProvider.autoDispose<DashboardData>((ref) async {
+final dashboardProvider = FutureProvider.autoDispose<DashboardData>((
+  ref,
+) async {
   final api = ref.watch(apiProvider);
   final now = DateTime.now();
 
-  final data = await api.get('/transactions', query: {
-    'startDate': _startUtc(DateTime(now.year, 1, 1)),
-    'endDate': _endUtc(now),
-    'limit': '2000',
-  }) as List<dynamic>;
+  final data =
+      await api.get(
+            '/transactions',
+            query: {
+              'startDate': _startUtc(DateTime(now.year, 1, 1)),
+              'endDate': _endUtc(now),
+              'limit': '2000',
+            },
+          )
+          as List<dynamic>;
 
   final txs = data
       .map((e) => Transaction.fromJson(e as Map<String, dynamic>))
       .where((t) => t.isDebit)
       .toList();
+
+  bool inCurrentMonth(Transaction t) =>
+      t.date.year == now.year && t.date.month == now.month;
 
   final monthTotals = List<double>.filled(12, 0);
   for (final t in txs) {
@@ -510,8 +564,11 @@ final dashboardProvider =
   }
 
   final weekTotals = List<double>.filled(7, 0);
-  final weekStart = DateTime(now.year, now.month, now.day)
-      .subtract(const Duration(days: 6));
+  final weekStart = DateTime(
+    now.year,
+    now.month,
+    now.day,
+  ).subtract(const Duration(days: 6));
   for (final t in txs) {
     final dayIndex = t.date.difference(weekStart).inDays;
     if (dayIndex >= 0 && dayIndex < 7) {
@@ -520,10 +577,63 @@ final dashboardProvider =
   }
 
   final monthTotal = monthTotals[now.month - 1];
+  final lastMonthIndex = now.month == 1 ? 11 : now.month - 2;
+  final lastMonthTotal = monthTotals[lastMonthIndex];
+  final avgDailyThisMonth = monthTotal / now.day;
+
+  final categoryAgg = <String, ({String name, double amount, int count})>{};
+  final merchantAgg = <String, ({double amount, int count})>{};
+  for (final t in txs.where(inCurrentMonth)) {
+    final categoryId = t.categoryId ?? 'uncategorized';
+    final categoryName = t.category?.name ?? 'Uncategorized';
+    final currentCategory =
+        categoryAgg[categoryId] ?? (name: categoryName, amount: 0.0, count: 0);
+    categoryAgg[categoryId] = (
+      name: currentCategory.name,
+      amount: currentCategory.amount + t.amount,
+      count: currentCategory.count + 1,
+    );
+
+    final merchant = t.merchant.trim().isEmpty ? 'Unknown' : t.merchant.trim();
+    final currentMerchant = merchantAgg[merchant] ?? (amount: 0.0, count: 0);
+    merchantAgg[merchant] = (
+      amount: currentMerchant.amount + t.amount,
+      count: currentMerchant.count + 1,
+    );
+  }
+
+  final monthCategorySpends =
+      categoryAgg.entries
+          .map(
+            (e) => CategorySpend(
+              categoryId: e.key,
+              name: e.value.name,
+              amount: e.value.amount,
+              count: e.value.count,
+            ),
+          )
+          .toList()
+        ..sort((a, b) => b.amount.compareTo(a.amount));
+
+  final topMerchants =
+      merchantAgg.entries
+          .map(
+            (e) => MerchantSpend(
+              merchant: e.key,
+              amount: e.value.amount,
+              count: e.value.count,
+            ),
+          )
+          .toList()
+        ..sort((a, b) => b.amount.compareTo(a.amount));
 
   return DashboardData(
     monthTotals: monthTotals,
     weekTotals: weekTotals,
     monthTotal: monthTotal,
+    lastMonthTotal: lastMonthTotal,
+    avgDailyThisMonth: avgDailyThisMonth,
+    monthCategorySpends: monthCategorySpends,
+    topMerchants: topMerchants.take(5).toList(),
   );
 });

@@ -11,12 +11,19 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
   SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
+    const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
+  );
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await NotifManager.init();
   final loggedIn = await AppStorage.hasToken();
-  runApp(ProviderScope(
-    overrides: [isLoggedInProvider.overrideWith((ref) => loggedIn)],
-    child: const App(),
-  ));
+  if (loggedIn) {
+    // Ensure reminders are re-scheduled after fresh install/update.
+    await NotifManager.scheduleMidnightReminder();
+  }
+  runApp(
+    ProviderScope(
+      overrides: [isLoggedInProvider.overrideWith((ref) => loggedIn)],
+      child: const App(),
+    ),
+  );
 }
