@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -125,7 +126,16 @@ class NotifManager {
       exactAlarmsAllowed = null; // N/A on iOS
     }
 
-    final pending = await _plugin.pendingNotificationRequests();
+    var pendingStatusKnown = true;
+    var pending = <PendingNotificationRequest>[];
+    try {
+      pending = await _plugin.pendingNotificationRequests();
+    } on PlatformException {
+      pendingStatusKnown = false;
+    } catch (_) {
+      pendingStatusKnown = false;
+    }
+
     PendingNotificationRequest? midnightPending;
     for (final p in pending) {
       if (p.id == 1) {
@@ -138,6 +148,7 @@ class NotifManager {
     return NotificationDebugStatus(
       permissionGranted: permissionGranted,
       exactAlarmsAllowed: exactAlarmsAllowed,
+      pendingStatusKnown: pendingStatusKnown,
       midnightReminderScheduled: midnightPending != null,
       midnightReminderTitle: midnightPending?.title,
       nextMidnightLocal: nextMidnightScheduleTime(),
@@ -151,6 +162,7 @@ class NotifManager {
 class NotificationDebugStatus {
   final bool permissionGranted;
   final bool? exactAlarmsAllowed;
+  final bool pendingStatusKnown;
   final bool midnightReminderScheduled;
   final String? midnightReminderTitle;
   final tz.TZDateTime nextMidnightLocal;
@@ -160,6 +172,7 @@ class NotificationDebugStatus {
   const NotificationDebugStatus({
     required this.permissionGranted,
     required this.exactAlarmsAllowed,
+    required this.pendingStatusKnown,
     required this.midnightReminderScheduled,
     required this.midnightReminderTitle,
     required this.nextMidnightLocal,
@@ -170,7 +183,7 @@ class NotificationDebugStatus {
   bool get isHealthy =>
       permissionGranted &&
       (exactAlarmsAllowed ?? true) &&
-      midnightReminderScheduled;
+      (!pendingStatusKnown || midnightReminderScheduled);
 
   String? get issueHint {
     if (!permissionGranted) {
@@ -178,6 +191,9 @@ class NotificationDebugStatus {
     }
     if (exactAlarmsAllowed == false) {
       return 'Enable Alarms & reminders for SpendLog (exact schedule).';
+    }
+    if (!pendingStatusKnown) {
+      return 'Could not read the reminder queue. Tap Reschedule to re-register.';
     }
     if (!midnightReminderScheduled) {
       return 'Tap Reschedule to register the daily midnight reminder.';

@@ -144,10 +144,15 @@ class _NotificationStatusCardState extends State<NotificationStatusCard> {
               ),
             _StatusRow(
               label: 'Daily reminder (00:01)',
-              ok: _status!.midnightReminderScheduled,
-              detail: _status!.midnightReminderScheduled
+              ok: !_status!.pendingStatusKnown
+                  ? true
+                  : _status!.midnightReminderScheduled,
+              detail: !_status!.pendingStatusKnown
+                  ? 'Unknown (tap Refresh)'
+                  : _status!.midnightReminderScheduled
                   ? 'Scheduled'
                   : 'Not scheduled',
+              neutralWhenOk: !_status!.pendingStatusKnown,
             ),
             Padding(
               padding: const EdgeInsets.only(left: 28, top: 2, bottom: 6),
