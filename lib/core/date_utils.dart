@@ -30,6 +30,13 @@ bool isFutureDate(DateTime date) {
   return d.isAfter(today);
 }
 
+/// UTC ISO range for API transaction queries (calendar day in local TZ).
+String startUtc(DateTime d) =>
+    DateTime(d.year, d.month, d.day).toUtc().toIso8601String();
+
+String endUtc(DateTime d) =>
+    DateTime(d.year, d.month, d.day, 23, 59, 59, 999).toUtc().toIso8601String();
+
 /// Timestamp for a manual transaction on the viewed calendar day.
 DateTime transactionTimestampForDay(DateTime calendarDay) {
   final day = normalizeCalendarDate(calendarDay);

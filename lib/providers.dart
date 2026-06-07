@@ -4,6 +4,7 @@ import 'core/api.dart';
 import 'core/storage.dart';
 import 'core/sms_reader.dart';
 import 'core/gmail_reader.dart';
+import 'core/analytics.dart';
 import 'core/notifs.dart';
 import 'core/date_utils.dart';
 import 'models.dart';
@@ -271,7 +272,10 @@ class TodayNotifier extends StateNotifier<TodayState> {
     load(DateTime.now());
   }
 
-  void _invalidateDashboard() => _ref.invalidate(dashboardProvider);
+  void _invalidateDashboard() {
+    _ref.invalidate(analyticsDashboardProvider);
+    _ref.invalidate(analyticsTrendsProvider);
+  }
 
   Future<bool> _shouldScanSources(DateTime date, bool forceRescan) async {
     if (isFutureDate(date)) return false;
@@ -285,8 +289,8 @@ class TodayNotifier extends StateNotifier<TodayState> {
         await _api.get(
               '/transactions',
               query: {
-                'startDate': _startUtc(date),
-                'endDate': _endUtc(date),
+                'startDate': startUtc(date),
+                'endDate': endUtc(date),
                 'limit': '200',
               },
             )
@@ -422,8 +426,8 @@ class TodayNotifier extends StateNotifier<TodayState> {
           await _api.get(
                 '/transactions',
                 query: {
-                  'startDate': _startUtc(yesterday),
-                  'endDate': _endUtc(yesterday),
+                  'startDate': startUtc(yesterday),
+                  'endDate': endUtc(yesterday),
                   'isUncategorized': 'true',
                   'limit': '10',
                 },
@@ -525,115 +529,17 @@ final todayProvider = StateNotifierProvider<TodayNotifier, TodayState>(
   (ref) => TodayNotifier(ref.watch(apiProvider), ref),
 );
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
+// ─── Analytics (same API as web panel) ────────────────────────────────────────
 
-String _startUtc(DateTime d) =>
-    DateTime(d.year, d.month, d.day).toUtc().toIso8601String();
+final analyticsDashboardProvider =
+    FutureProvider.autoDispose<AnalyticsDashboard>((ref) async {
+      final api = ref.watch(apiProvider);
+      return fetchAnalyticsDashboard(api);
+    });
 
-String _endUtc(DateTime d) =>
-    DateTime(d.year, d.month, d.day, 23, 59, 59, 999).toUtc().toIso8601String();
-
-final dashboardProvider = FutureProvider.autoDispose<DashboardData>((
+final analyticsTrendsProvider = FutureProvider.autoDispose<List<MonthlyTrend>>((
   ref,
 ) async {
   final api = ref.watch(apiProvider);
-  final now = DateTime.now();
-
-  final data =
-      await api.get(
-            '/transactions',
-            query: {
-              'startDate': _startUtc(DateTime(now.year, 1, 1)),
-              'endDate': _endUtc(now),
-              'limit': '2000',
-            },
-          )
-          as List<dynamic>;
-
-  final txs = data
-      .map((e) => Transaction.fromJson(e as Map<String, dynamic>))
-      .where((t) => t.isDebit)
-      .toList();
-
-  bool inCurrentMonth(Transaction t) =>
-      t.date.year == now.year && t.date.month == now.month;
-
-  final monthTotals = List<double>.filled(12, 0);
-  for (final t in txs) {
-    monthTotals[t.date.month - 1] += t.amount;
-  }
-
-  final weekTotals = List<double>.filled(7, 0);
-  final weekStart = DateTime(
-    now.year,
-    now.month,
-    now.day,
-  ).subtract(const Duration(days: 6));
-  for (final t in txs) {
-    final dayIndex = t.date.difference(weekStart).inDays;
-    if (dayIndex >= 0 && dayIndex < 7) {
-      weekTotals[dayIndex] += t.amount;
-    }
-  }
-
-  final monthTotal = monthTotals[now.month - 1];
-  final lastMonthIndex = now.month == 1 ? 11 : now.month - 2;
-  final lastMonthTotal = monthTotals[lastMonthIndex];
-  final avgDailyThisMonth = monthTotal / now.day;
-
-  final categoryAgg = <String, ({String name, double amount, int count})>{};
-  final merchantAgg = <String, ({double amount, int count})>{};
-  for (final t in txs.where(inCurrentMonth)) {
-    final categoryId = t.categoryId ?? 'uncategorized';
-    final categoryName = t.category?.name ?? 'Uncategorized';
-    final currentCategory =
-        categoryAgg[categoryId] ?? (name: categoryName, amount: 0.0, count: 0);
-    categoryAgg[categoryId] = (
-      name: currentCategory.name,
-      amount: currentCategory.amount + t.amount,
-      count: currentCategory.count + 1,
-    );
-
-    final merchant = t.merchant.trim().isEmpty ? 'Unknown' : t.merchant.trim();
-    final currentMerchant = merchantAgg[merchant] ?? (amount: 0.0, count: 0);
-    merchantAgg[merchant] = (
-      amount: currentMerchant.amount + t.amount,
-      count: currentMerchant.count + 1,
-    );
-  }
-
-  final monthCategorySpends =
-      categoryAgg.entries
-          .map(
-            (e) => CategorySpend(
-              categoryId: e.key,
-              name: e.value.name,
-              amount: e.value.amount,
-              count: e.value.count,
-            ),
-          )
-          .toList()
-        ..sort((a, b) => b.amount.compareTo(a.amount));
-
-  final topMerchants =
-      merchantAgg.entries
-          .map(
-            (e) => MerchantSpend(
-              merchant: e.key,
-              amount: e.value.amount,
-              count: e.value.count,
-            ),
-          )
-          .toList()
-        ..sort((a, b) => b.amount.compareTo(a.amount));
-
-  return DashboardData(
-    monthTotals: monthTotals,
-    weekTotals: weekTotals,
-    monthTotal: monthTotal,
-    lastMonthTotal: lastMonthTotal,
-    avgDailyThisMonth: avgDailyThisMonth,
-    monthCategorySpends: monthCategorySpends,
-    topMerchants: topMerchants.take(5).toList(),
-  );
+  return fetchAnalyticsTrends(api);
 });

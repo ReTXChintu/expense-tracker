@@ -12,10 +12,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
-  static const _screens = [
-    TodayScreen(),
-    DashboardScreen(),
-  ];
+  static const _screens = [TodayScreen(), DashboardScreen()];
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +36,7 @@ class _MainShellState extends State<MainShell> {
             BottomNavigationBarItem(
               icon: Icon(Icons.bar_chart_outlined),
               activeIcon: Icon(Icons.bar_chart),
-              label: 'Stats',
+              label: 'Analytics',
             ),
           ],
         ),
