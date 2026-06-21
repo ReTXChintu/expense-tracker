@@ -43,3 +43,11 @@ DateTime transactionTimestampForDay(DateTime calendarDay) {
   if (isToday(day)) return DateTime.now();
   return DateTime(day.year, day.month, day.day, 12);
 }
+
+/// Calendar date key for scanned-day API (YYYY-MM-DD).
+String dateKey(DateTime d) {
+  final n = normalizeCalendarDate(d);
+  return '${n.year.toString().padLeft(4, '0')}-'
+      '${n.month.toString().padLeft(2, '0')}-'
+      '${n.day.toString().padLeft(2, '0')}';
+}
