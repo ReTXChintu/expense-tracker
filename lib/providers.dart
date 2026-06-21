@@ -1,12 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/api.dart';
 import 'core/storage.dart';
+import 'core/scanned_days.dart';
 import 'core/sms_reader.dart';
 import 'core/gmail_reader.dart';
 import 'core/analytics.dart';
 import 'core/notifs.dart';
+import 'core/cc_bill_detector.dart';
+import 'core/payment_instrument_parser.dart';
 import 'core/date_utils.dart';
+import 'core/transaction_merge.dart';
 import 'models.dart';
 
 // ─── Singletons ───────────────────────────────────────────────────────────────
@@ -93,6 +99,64 @@ final categoriesProvider = FutureProvider<List<Category>>((ref) async {
   final data = await api.get('/categories') as List<dynamic>;
   return data.map((e) => Category.fromJson(e as Map<String, dynamic>)).toList();
 });
+
+final paymentInstrumentsProvider = FutureProvider<List<PaymentInstrument>>((ref) async {
+  final api = ref.watch(apiProvider);
+  final data = await api.get('/payment-instruments') as List<dynamic>;
+  return data.map((e) => PaymentInstrument.fromJson(e as Map<String, dynamic>)).toList();
+});
+
+class PaymentInstrumentsNotifier extends StateNotifier<AsyncValue<void>> {
+  final ApiClient _api;
+  final Ref _ref;
+
+  PaymentInstrumentsNotifier(this._api, this._ref) : super(const AsyncValue.data(null));
+
+  Future<PaymentInstrument> create({
+    required String name,
+    required PaymentInstrumentType type,
+    String? issuer,
+    String? last4,
+    required String color,
+    required String icon,
+    int? billingCycleDay,
+  }) async {
+    state = const AsyncValue.loading();
+    try {
+      final res = await _api.post('/payment-instruments', data: {
+        'name': name,
+        'type': switch (type) {
+          PaymentInstrumentType.debitCard => 'debit_card',
+          PaymentInstrumentType.bankAccount => 'bank_account',
+          PaymentInstrumentType.upi => 'upi',
+          PaymentInstrumentType.wallet => 'wallet',
+          _ => 'credit_card',
+        },
+        if (issuer != null) 'issuer': issuer,
+        if (last4 != null) 'last4': last4,
+        'color': color,
+        'icon': icon,
+        if (billingCycleDay != null) 'billingCycleDay': billingCycleDay,
+      }) as Map<String, dynamic>;
+      _ref.invalidate(paymentInstrumentsProvider);
+      state = const AsyncValue.data(null);
+      return PaymentInstrument.fromJson(res);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+      rethrow;
+    }
+  }
+
+  Future<void> archive(String id) async {
+    await _api.delete('/payment-instruments/$id');
+    _ref.invalidate(paymentInstrumentsProvider);
+  }
+}
+
+final paymentInstrumentsNotifierProvider =
+    StateNotifierProvider<PaymentInstrumentsNotifier, AsyncValue<void>>(
+  (ref) => PaymentInstrumentsNotifier(ref.watch(apiProvider), ref),
+);
 
 class CategoriesNotifier extends StateNotifier<AsyncValue<void>> {
   final ApiClient _api;
@@ -193,6 +257,9 @@ bool _isSamePayment(Transaction a, Transaction b) {
 bool _isDuplicateSameSource(Transaction a, Transaction b) =>
     a.source == b.source && _isSamePayment(a, b);
 
+bool _autoMergeEnabled(Ref ref) =>
+    ref.read(userProvider)?.autoMergeSources ?? true;
+
 Transaction? _findSamePayment(List<Transaction> list, Transaction tx) {
   for (final e in list) {
     if (_isSamePayment(e, tx)) return e;
@@ -203,8 +270,11 @@ Transaction? _findSamePayment(List<Transaction> list, Transaction tx) {
 /// One row per payment; SMS + Gmail text merged into a single transaction.
 Future<List<Transaction>> _consolidateTransactions(
   ApiClient api,
-  List<Transaction> txs,
-) async {
+  List<Transaction> txs, {
+  required bool autoMergeSources,
+}) async {
+  if (!autoMergeSources) return txs;
+
   final out = <Transaction>[];
   final consumed = <String>{};
 
@@ -264,11 +334,20 @@ Future<List<Transaction>> _consolidateTransactions(
 class TodayNotifier extends StateNotifier<TodayState> {
   final ApiClient _api;
   final Ref _ref;
+  late final ScannedDaysApi _scannedDays;
+
+  static const _todayRescanTtl = Duration(minutes: 5);
+  final Map<String, List<Transaction>> _dayCache = {};
+  final Map<String, DateTime> _lastScanAt = {};
+
+  final Map<String, Timer> _pendingDeletes = {};
+  final Map<String, Transaction> _pendingDeleteSnapshots = {};
 
   TodayNotifier(this._api, this._ref)
     : super(
         TodayState(date: normalizeCalendarDate(DateTime.now()), loading: true),
       ) {
+    _scannedDays = ScannedDaysApi(_api);
     load(DateTime.now());
   }
 
@@ -277,11 +356,34 @@ class TodayNotifier extends StateNotifier<TodayState> {
     _ref.invalidate(analyticsTrendsProvider);
   }
 
+  void _cacheTransactions(DateTime date, List<Transaction> txs) {
+    _dayCache[dateKey(date)] = txs;
+  }
+
+  Future<List<Transaction>> _sortAndConsolidate(List<Transaction> txs) async {
+    var list = await _consolidateTransactions(
+      _api,
+      txs,
+      autoMergeSources: _autoMergeEnabled(_ref),
+    );
+    list.sort((a, b) {
+      if (a.isCategorized != b.isCategorized) {
+        return a.isCategorized ? 1 : -1;
+      }
+      return b.date.compareTo(a.date);
+    });
+    return list;
+  }
+
   Future<bool> _shouldScanSources(DateTime date, bool forceRescan) async {
     if (isFutureDate(date)) return false;
-    if (isToday(date)) return true;
     if (forceRescan) return true;
-    return !(await AppStorage.isDateScanned(date));
+    if (isToday(date)) {
+      final key = dateKey(date);
+      final last = _lastScanAt[key];
+      return last == null || DateTime.now().difference(last) > _todayRescanTtl;
+    }
+    return !(await _scannedDays.isScanned(date));
   }
 
   Future<List<Transaction>> _fetchTransactionsForDay(DateTime date) async {
@@ -300,10 +402,7 @@ class TodayNotifier extends StateNotifier<TodayState> {
         .toList();
   }
 
-  Future<void> _scanAndPersist(
-    DateTime date, {
-    required bool markScannedAfter,
-  }) async {
+  Future<void> _scanAndPersist(DateTime date) async {
     state = state.copyWith(scanning: true, clearError: true);
 
     List<Transaction> existing = [];
@@ -321,46 +420,47 @@ class TodayNotifier extends StateNotifier<TodayState> {
       state = state.copyWith(error: e.toString());
     }
 
+    final instruments = await _ref.read(paymentInstrumentsProvider.future);
+
     for (final tx in newTxs) {
-      final match = _findSamePayment(existing, tx);
+      final tagged = applySuggestedKind(applyInstrumentMatch(tx, instruments));
+      final match = _findSamePayment(existing, tagged);
       if (match != null) {
-        if (_isDuplicateSameSource(match, tx)) continue;
-        final merged = Transaction.merge(match, tx);
-        try {
-          final res =
-              await _api.patch(
-                    '/transactions/${match.id}',
-                    data: {
-                      if (merged.noteForApi != null) 'note': merged.noteForApi,
-                      'merchant': merged.merchant,
-                    },
-                  )
-                  as Map<String, dynamic>;
-          final idx = existing.indexWhere((e) => e.id == match.id);
-          if (idx >= 0) {
-            existing[idx] = Transaction.fromJson(res);
+        if (_isDuplicateSameSource(match, tagged)) continue;
+        if (_autoMergeEnabled(_ref)) {
+          final merged = Transaction.merge(match, tagged);
+          try {
+            final res =
+                await _api.patch(
+                      '/transactions/${match.id}',
+                      data: {
+                        if (merged.noteForApi != null) 'note': merged.noteForApi,
+                        'merchant': merged.merchant,
+                      },
+                    )
+                    as Map<String, dynamic>;
+            final idx = existing.indexWhere((e) => e.id == match.id);
+            if (idx >= 0) {
+              existing[idx] = Transaction.fromJson(res);
+            }
+            _invalidateDashboard();
+            debugPrint('[Scan] merged ${tagged.source.name} into ${match.id}');
+          } catch (e) {
+            debugPrint('[Scan] failed to merge ${tagged.source.name}: $e');
           }
-          _invalidateDashboard();
-          debugPrint('[Scan] merged ${tx.source.name} into ${match.id}');
-        } catch (e) {
-          debugPrint('[Scan] failed to merge ${tx.source.name}: $e');
+          continue;
         }
-        continue;
       }
 
       try {
         final res =
-            await _api.post('/transactions', data: tx.toJson())
+            await _api.post('/transactions', data: tagged.toJson())
                 as Map<String, dynamic>;
         existing.add(Transaction.fromJson(res));
         _invalidateDashboard();
       } catch (e) {
-        debugPrint('[Scan] failed to save ${tx.source.name} tx: $e');
+        debugPrint('[Scan] failed to save ${tagged.source.name} tx: $e');
       }
-    }
-
-    if (markScannedAfter) {
-      await AppStorage.markDateScanned(date);
     }
 
     state = state.copyWith(scanning: false);
@@ -368,35 +468,52 @@ class TodayNotifier extends StateNotifier<TodayState> {
 
   Future<void> load(DateTime date, {bool forceRescan = false}) async {
     final normalized = normalizeCalendarDate(date);
-    state = TodayState(date: normalized, loading: true);
+    final key = dateKey(normalized);
+    final cached = _dayCache[key];
+
+    if (cached != null && !forceRescan) {
+      state = state.copyWith(
+        date: normalized,
+        transactions: cached,
+        loading: false,
+        clearError: true,
+      );
+    } else {
+      state = TodayState(
+        date: normalized,
+        loading: cached == null,
+        transactions: cached ?? const [],
+      );
+    }
 
     try {
-      if (forceRescan && !isToday(normalized)) {
-        await AppStorage.clearScannedDate(normalized);
-      }
-
-      final shouldScan = await _shouldScanSources(normalized, forceRescan);
-      if (shouldScan) {
-        await _scanAndPersist(
-          normalized,
-          markScannedAfter: isPastDate(normalized),
-        );
+      if (forceRescan) {
+        if (isPastDate(normalized)) {
+          await _scannedDays.clearScanned(normalized);
+        } else if (isToday(normalized)) {
+          _lastScanAt.remove(key);
+        }
       }
 
       var txs = await _fetchTransactionsForDay(normalized);
-      txs = await _consolidateTransactions(_api, txs);
-      txs.sort((a, b) {
-        if (a.isCategorized != b.isCategorized) {
-          return a.isCategorized ? 1 : -1;
-        }
-        return b.date.compareTo(a.date);
-      });
+      txs = await _sortAndConsolidate(txs);
+      _cacheTransactions(normalized, txs);
+      state = state.copyWith(transactions: txs, loading: false);
 
-      state = state.copyWith(
-        transactions: txs,
-        loading: false,
-        scanning: false,
-      );
+      final shouldScan = await _shouldScanSources(normalized, forceRescan);
+      if (shouldScan) {
+        await _scanAndPersist(normalized);
+        if (isPastDate(normalized)) {
+          await _scannedDays.markScanned(normalized);
+        } else if (isToday(normalized)) {
+          _lastScanAt[key] = DateTime.now();
+        }
+        txs = await _fetchTransactionsForDay(normalized);
+        txs = await _sortAndConsolidate(txs);
+        _cacheTransactions(normalized, txs);
+        state = state.copyWith(transactions: txs, scanning: false);
+      }
+
       await _checkMissedDay();
     } catch (e) {
       state = state.copyWith(
@@ -410,12 +527,148 @@ class TodayNotifier extends StateNotifier<TodayState> {
   Future<void> deleteSaved(String id) async {
     try {
       await _api.delete('/transactions/$id');
-      state = state.copyWith(
-        transactions: state.transactions.where((t) => t.id != id).toList(),
-      );
+      final list = state.transactions.where((t) => t.id != id).toList();
+      state = state.copyWith(transactions: list);
+      _cacheTransactions(state.date, list);
       _invalidateDashboard();
     } catch (e) {
       state = state.copyWith(error: e.toString());
+    }
+  }
+
+  void stageDelete(Transaction tx) {
+    final id = tx.id;
+    if (id == null) return;
+
+    _pendingDeletes[id]?.cancel();
+    _pendingDeleteSnapshots[id] = tx;
+
+    final list = state.transactions.where((t) => t.id != id).toList();
+    state = state.copyWith(transactions: list);
+    _cacheTransactions(state.date, list);
+
+    _pendingDeletes[id] = Timer(const Duration(seconds: 2), () {
+      unawaited(_commitDelete(id));
+    });
+  }
+
+  void undoDelete(String id) {
+    _pendingDeletes[id]?.cancel();
+    _pendingDeletes.remove(id);
+    final tx = _pendingDeleteSnapshots.remove(id);
+    if (tx == null) return;
+
+    final list = [...state.transactions, tx];
+    list.sort((a, b) {
+      if (a.isCategorized != b.isCategorized) {
+        return a.isCategorized ? 1 : -1;
+      }
+      return b.date.compareTo(a.date);
+    });
+    state = state.copyWith(transactions: list);
+    _cacheTransactions(state.date, list);
+  }
+
+  Future<void> _commitDelete(String id) async {
+    _pendingDeletes.remove(id);
+    _pendingDeleteSnapshots.remove(id);
+    try {
+      await _api.delete('/transactions/$id');
+      _invalidateDashboard();
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+
+  Future<void> mergeSaved(Transaction a, Transaction b, MergeOptions options) async {
+    final primaryId = a.id;
+    final secondaryId = b.id;
+    if (primaryId == null || secondaryId == null) return;
+
+    try {
+      final merged = TransactionMerge.merge(a, b, options: options);
+      final res =
+          await _api.patch(
+                '/transactions/$primaryId',
+                data: {
+                  'merchant': merged.merchant,
+                  'amount': merged.amount,
+                  'date': DateTime.fromMillisecondsSinceEpoch(
+                    merged.date.millisecondsSinceEpoch,
+                    isUtc: true,
+                  ).toIso8601String(),
+                  if (merged.noteForApi != null) 'note': merged.noteForApi,
+                },
+              )
+              as Map<String, dynamic>;
+
+      await _api.delete('/transactions/$secondaryId');
+
+      final updated = Transaction.fromJson(res);
+      final list = state.transactions
+          .where((t) => t.id != secondaryId)
+          .map((t) => t.id == primaryId ? updated : t)
+          .toList();
+      list.sort((a, b) {
+        if (a.isCategorized != b.isCategorized) {
+          return a.isCategorized ? 1 : -1;
+        }
+        return b.date.compareTo(a.date);
+      });
+      state = state.copyWith(transactions: list);
+      _cacheTransactions(state.date, list);
+      _invalidateDashboard();
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      rethrow;
+    }
+  }
+
+  Future<void> unmergeSaved(Transaction tx) async {
+    final id = tx.id;
+    if (id == null) return;
+
+    final drafts = TransactionMerge.split(tx);
+    if (drafts.length < 2) return;
+
+    try {
+      final keep = drafts.first;
+      final res =
+          await _api.patch(
+                '/transactions/$id',
+                data: {
+                  if (keep.noteForApi != null) 'note': keep.noteForApi,
+                  'source': keep.source == TxSource.gmail ? 'email' : keep.source.name,
+                },
+              )
+              as Map<String, dynamic>;
+      var kept = Transaction.fromJson(res);
+
+      final created = <Transaction>[];
+      for (final draft in drafts.skip(1)) {
+        final body = draft.toJson();
+        body['date'] = DateTime.fromMillisecondsSinceEpoch(
+          tx.date.millisecondsSinceEpoch,
+          isUtc: true,
+        ).toIso8601String();
+        final postRes = await _api.post('/transactions', data: body) as Map<String, dynamic>;
+        created.add(Transaction.fromJson(postRes));
+      }
+
+      final list = state.transactions.map((t) => t.id == id ? kept : t).toList()
+        ..addAll(created);
+      list.sort((a, b) {
+        if (a.isCategorized != b.isCategorized) {
+          return a.isCategorized ? 1 : -1;
+        }
+        return b.date.compareTo(a.date);
+      });
+      state = state.copyWith(transactions: list);
+      _cacheTransactions(state.date, list);
+      _invalidateDashboard();
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      rethrow;
     }
   }
 
@@ -443,7 +696,8 @@ class TodayNotifier extends StateNotifier<TodayState> {
 
   /// Call after Gmail is connected so past days are re-scanned for email.
   Future<void> onGmailConnected() async {
-    await AppStorage.clearAllScannedDates();
+    await _scannedDays.clearAll();
+    _lastScanAt.clear();
     await load(state.date, forceRescan: true);
   }
 
@@ -482,6 +736,7 @@ class TodayNotifier extends StateNotifier<TodayState> {
           return b.date.compareTo(a.date);
         });
         state = state.copyWith(transactions: updated);
+        _cacheTransactions(state.date, updated);
       }
       _invalidateDashboard();
     } catch (e) {
@@ -495,6 +750,13 @@ class TodayNotifier extends StateNotifier<TodayState> {
     double? amount,
     bool? isDebit,
     String? categoryId,
+    TxKind? kind,
+    String? linkedTransactionId,
+    String? paymentInstrumentId,
+    String? counterpartyInstrumentId,
+    bool clearLinkedTransactionId = false,
+    bool clearPaymentInstrumentId = false,
+    bool clearCounterpartyInstrumentId = false,
   }) async {
     try {
       final data = <String, dynamic>{};
@@ -502,6 +764,28 @@ class TodayNotifier extends StateNotifier<TodayState> {
       if (amount != null) data['amount'] = amount;
       if (isDebit != null) data['type'] = isDebit ? 'debit' : 'credit';
       if (categoryId != null) data['categoryId'] = categoryId;
+      if (kind != null) {
+        data['kind'] = switch (kind) {
+          TxKind.ccBillPayment => 'cc_bill_payment',
+          TxKind.selfTransfer => 'self_transfer',
+          _ => kind.name,
+        };
+      }
+      if (linkedTransactionId != null) {
+        data['linkedTransactionId'] = linkedTransactionId;
+      } else if (clearLinkedTransactionId) {
+        data['linkedTransactionId'] = null;
+      }
+      if (paymentInstrumentId != null) {
+        data['paymentInstrumentId'] = paymentInstrumentId;
+      } else if (clearPaymentInstrumentId) {
+        data['paymentInstrumentId'] = null;
+      }
+      if (counterpartyInstrumentId != null) {
+        data['counterpartyInstrumentId'] = counterpartyInstrumentId;
+      } else if (clearCounterpartyInstrumentId) {
+        data['counterpartyInstrumentId'] = null;
+      }
       if (data.isEmpty) return;
 
       final res =
@@ -518,6 +802,7 @@ class TodayNotifier extends StateNotifier<TodayState> {
         return b.date.compareTo(a.date);
       });
       state = state.copyWith(transactions: list);
+      _cacheTransactions(state.date, list);
       _invalidateDashboard();
     } catch (e) {
       state = state.copyWith(error: e.toString());
@@ -531,10 +816,15 @@ final todayProvider = StateNotifierProvider<TodayNotifier, TodayState>(
 
 // ─── Analytics (same API as web panel) ────────────────────────────────────────
 
+final analyticsPeriodProvider = StateProvider<AnalyticsPeriod>(
+  (ref) => AnalyticsPeriod.month,
+);
+
 final analyticsDashboardProvider =
     FutureProvider.autoDispose<AnalyticsDashboard>((ref) async {
       final api = ref.watch(apiProvider);
-      return fetchAnalyticsDashboard(api);
+      final period = ref.watch(analyticsPeriodProvider);
+      return fetchAnalyticsDashboard(api, period: period);
     });
 
 final analyticsTrendsProvider = FutureProvider.autoDispose<List<MonthlyTrend>>((

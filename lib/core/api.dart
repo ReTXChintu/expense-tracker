@@ -32,7 +32,11 @@ class ApiClient {
   Future<dynamic> patch(String path, {dynamic data}) =>
       _request(() => _dio.patch(path, data: data));
 
-  Future<dynamic> delete(String path) => _request(() => _dio.delete(path));
+  Future<dynamic> put(String path, {dynamic data}) =>
+      _request(() => _dio.put(path, data: data));
+
+  Future<dynamic> delete(String path, {Map<String, dynamic>? query}) =>
+      _request(() => _dio.delete(path, queryParameters: query));
 
   Future<dynamic> _request(Future<Response> Function() call) async {
     try {
