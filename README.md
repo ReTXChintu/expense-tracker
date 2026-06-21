@@ -37,3 +37,23 @@ copy .env.example .env
 
 - Backend: `npm run start:dev` in `expense-tracker-backend`
 - App: `flutter run` in `expense-tracker` (after `.env` is configured)
+
+## Release
+
+Uses [release-it](https://github.com/release-it/release-it). A release bumps semver in `pubspec.yaml`, increments the `+build` suffix, updates `CHANGELOG.md`, builds `dist/spendlog.apk`, commits, tags `vX.Y.Z`, pushes, and creates a GitHub Release with the APK attached.
+
+**One-time setup:**
+
+```powershell
+cd expense-tracker
+npm install
+gh auth login    # or set GITHUB_TOKEN with repo scope
+```
+
+**Major / minor / patch:**
+
+```powershell
+npm run release:major   # or release:minor / release:patch
+```
+
+Requires a clean git working tree. To build the APK only: `npm run build:apk`.

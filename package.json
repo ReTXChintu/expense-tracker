@@ -1,0 +1,19 @@
+{
+  "name": "expense-tracker",
+  "version": "1.1.0",
+  "private": true,
+  "scripts": {
+    "analyze": "flutter analyze",
+    "build:apk": "node scripts/build-apk.cjs",
+    "version:show": "node -p \"require('fs').readFileSync('pubspec.yaml','utf8').match(/^version:\\s*(.+)$/m)[1].trim()\"",
+    "release": "release-it",
+    "release:patch": "release-it patch",
+    "release:minor": "release-it minor",
+    "release:major": "release-it major"
+  },
+  "devDependencies": {
+    "@release-it/bumper": "^6.0.1",
+    "@release-it/conventional-changelog": "^8.0.2",
+    "release-it": "^17.11.0"
+  }
+}

@@ -39,3 +39,8 @@ lib/core/google_secrets.dart
 .idea/
 .vscode/
 *.DS_Store
+
+# Node (release-it)
+node_modules/
+.release-build
+dist/

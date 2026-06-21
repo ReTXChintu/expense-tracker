@@ -1,0 +1,31 @@
+{
+  "git": {
+    "commitMessage": "chore(release): v${version}",
+    "tagName": "v${version}",
+    "requireCleanWorkingDir": true
+  },
+  "github": {
+    "release": true,
+    "releaseName": "v${version}",
+    "assets": ["dist/spendlog.apk"]
+  },
+  "npm": {
+    "publish": false
+  },
+  "hooks": {
+    "before:init": ["npm run analyze"],
+    "before:bump": "node scripts/release-before-bump.cjs",
+    "after:bump": "node scripts/release-after-bump.cjs ${version}",
+    "before:release": "node scripts/build-apk.cjs"
+  },
+  "plugins": {
+    "@release-it/bumper": {
+      "in": "pubspec.yaml",
+      "out": "pubspec.yaml"
+    },
+    "@release-it/conventional-changelog": {
+      "preset": "angular",
+      "infile": "CHANGELOG.md"
+    }
+  }
+}
