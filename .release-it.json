@@ -16,7 +16,8 @@
     "before:init": ["npm run analyze"],
     "before:bump": "node scripts/release-before-bump.cjs",
     "after:bump": "node scripts/release-after-bump.cjs ${version}",
-    "before:release": "node scripts/build-apk.cjs"
+    "before:release": "node scripts/build-apk.cjs",
+    "after:github:release": "node scripts/upload-github-apk.cjs ${version}"
   },
   "plugins": {
     "@release-it/bumper": {

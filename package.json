@@ -6,10 +6,11 @@
     "analyze": "flutter analyze",
     "build:apk": "node scripts/build-apk.cjs",
     "version:show": "node -p \"require('fs').readFileSync('pubspec.yaml','utf8').match(/^version:\\s*(.+)$/m)[1].trim()\"",
-    "release": "release-it",
-    "release:patch": "release-it patch",
-    "release:minor": "release-it minor",
-    "release:major": "release-it major"
+    "release": "node scripts/release.cjs",
+    "release:patch": "node scripts/release.cjs patch",
+    "release:minor": "node scripts/release.cjs minor",
+    "release:major": "node scripts/release.cjs major",
+    "upload:apk": "node scripts/upload-github-apk.cjs"
   },
   "devDependencies": {
     "@release-it/bumper": "^6.0.1",

@@ -47,7 +47,7 @@ Uses [release-it](https://github.com/release-it/release-it). A release bumps sem
 ```powershell
 cd expense-tracker
 npm install
-gh auth login    # or set GITHUB_TOKEN with repo scope
+gh auth login    # or set GITHUB_TOKEN (repo scope) in your environment
 ```
 
 **Major / minor / patch:**
@@ -57,3 +57,11 @@ npm run release:major   # or release:minor / release:patch
 ```
 
 Requires a clean git working tree. To build the APK only: `npm run build:apk`.
+
+**Attach APK to an existing release** (e.g. v2.0.0 was created without the file):
+
+```powershell
+$env:GITHUB_TOKEN = "ghp_..."   # GitHub PAT with repo scope, if not using gh CLI
+npm run build:apk
+npm run upload:apk -- 2.0.0
+```
