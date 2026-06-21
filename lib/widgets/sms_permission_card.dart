@@ -84,7 +84,7 @@ class _SmsPermissionCardState extends State<SmsPermissionCard> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Allow SMS access to automatically import bank transaction alerts on the Today screen.',
+            'Allow SMS access to automatically import bank transaction alerts on the Transactions screen.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           if (!_loading && _status != null) ...[

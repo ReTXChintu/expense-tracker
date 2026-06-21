@@ -52,7 +52,7 @@ class TodayHero extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "Today's spend",
+            "Day spend",
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.75),
               fontSize: 13,

@@ -15,7 +15,7 @@ class _MainShellState extends State<MainShell> {
   int _index = 0;
 
   static const _destinations = [
-    (icon: Icons.calendar_today_outlined, selected: Icons.calendar_today, label: 'Today'),
+    (icon: Icons.receipt_long_outlined, selected: Icons.receipt_long, label: 'Transactions'),
     (icon: Icons.bar_chart_outlined, selected: Icons.bar_chart, label: 'Analytics'),
     (icon: Icons.person_outline, selected: Icons.person, label: 'Profile'),
   ];
