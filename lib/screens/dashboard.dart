@@ -1,11 +1,15 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/analytics.dart';
 import '../models.dart';
 import '../providers.dart';
 import '../theme.dart';
+import '../widgets/app_card.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/shimmer_box.dart';
 
 const _pieColors = [
   Color(0xFF4361EE),
@@ -31,7 +35,7 @@ class DashboardScreen extends ConsumerWidget {
     final dashboard = ref.watch(analyticsDashboardProvider);
     final trends = ref.watch(analyticsTrendsProvider);
     final categories = ref.watch(categoriesProvider);
-    final monthName = DateFormat('MMMM yyyy').format(DateTime.now());
+    final period = ref.watch(analyticsPeriodProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -44,7 +48,7 @@ class DashboardScreen extends ConsumerWidget {
         ],
       ),
       body: dashboard.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const DashboardShimmer(),
         error: (e, _) => Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -67,7 +71,11 @@ class DashboardScreen extends ConsumerWidget {
           data: d,
           trends: trends,
           categories: categories,
-          monthName: monthName,
+          period: period,
+          onPeriodChanged: (p) {
+            ref.read(analyticsPeriodProvider.notifier).state = p;
+            ref.invalidate(analyticsDashboardProvider);
+          },
         ),
       ),
     );
@@ -78,13 +86,15 @@ class _Body extends StatelessWidget {
   final AnalyticsDashboard data;
   final AsyncValue<List<MonthlyTrend>> trends;
   final AsyncValue<List<Category>> categories;
-  final String monthName;
+  final AnalyticsPeriod period;
+  final ValueChanged<AnalyticsPeriod> onPeriodChanged;
 
   const _Body({
     required this.data,
     required this.trends,
     required this.categories,
-    required this.monthName,
+    required this.period,
+    required this.onPeriodChanged,
   });
 
   Category? _cat(String id) {
@@ -99,50 +109,79 @@ class _Body extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
       children: [
         Text(
-          'Spending intelligence for $monthName — trends, categories, and where your money goes.',
+          period.subtitle,
           style: Theme.of(context).textTheme.bodySmall,
         ),
-        const SizedBox(height: 16),
-        _HeroBanner(
-          monthName: monthName,
-          summary: s,
-          topCategory: data.highestSpendCategory,
+        const SizedBox(height: 12),
+        SegmentedButton<AnalyticsPeriod>(
+          segments: AnalyticsPeriod.values
+              .map(
+                (p) => ButtonSegment(value: p, label: Text(p.label)),
+              )
+              .toList(),
+          selected: {period},
+          onSelectionChanged: (s) => onPeriodChanged(s.first),
         ),
         const SizedBox(height: 16),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 1.35,
-          children: [
-            _StatCard(
-              label: 'Monthly spend',
-              value: formatInr(s.thisMonthSpend),
-              icon: Icons.trending_up,
-              trend: '${s.monthlyChangePercent.abs().toStringAsFixed(0)}%',
-              trendUp: s.isSpendingUp,
-            ),
-            _StatCard(
-              label: 'This week',
-              value: formatInr(s.thisWeekSpend),
-              icon: Icons.bolt_outlined,
-              hint: 'Last 7 days of debits',
-            ),
-            _StatCard(
-              label: 'Daily average',
-              value: formatInr(s.avgDailySpend),
-              icon: Icons.pie_chart_outline,
-              hint: 'Based on days elapsed',
-            ),
-            _StatCard(
-              label: 'Last month',
-              value: formatInr(s.lastMonthSpend),
-              icon: Icons.shopping_bag_outlined,
-              hint: 'Previous calendar month',
-            ),
-          ],
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          switchInCurve: Curves.easeOutCubic,
+          child: _HeroBanner(
+            key: ValueKey('hero_${period.name}_${s.currentSpend}'),
+            summary: s,
+            comparison: data.comparison,
+            topCategory: data.highestSpendCategory,
+          ),
+        ),
+        const SizedBox(height: 16),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: GridView.count(
+            key: ValueKey('stats_${period.name}'),
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.35,
+            children: [
+              _StatCard(
+                label: s.currentLabel,
+                value: formatInr(s.currentSpend),
+                icon: Icons.trending_up,
+                trend: '${s.changePercent.abs().toStringAsFixed(0)}%',
+                trendUp: s.isSpendingUp,
+                index: 0,
+              ),
+              _StatCard(
+                label: s.previousLabel,
+                value: formatInr(s.previousSpend),
+                icon: Icons.shopping_bag_outlined,
+                hint: 'Previous period',
+                index: 1,
+              ),
+              _StatCard(
+                label: 'Daily average',
+                value: formatInr(s.avgDailySpend),
+                icon: Icons.pie_chart_outline,
+                hint: 'Selected ${period.label.toLowerCase()}',
+                index: 2,
+              ),
+              _StatCard(
+                label: 'Change',
+                value: '${s.isSpendingUp ? '+' : '-'}${s.changePercent.abs().toStringAsFixed(0)}%',
+                icon: Icons.bolt_outlined,
+                hint: '${s.previousLabel} → ${s.currentLabel}',
+                index: 3,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _Panel(
+          title: 'Period comparison',
+          subtitle: '${s.currentLabel} vs ${s.previousLabel}',
+          child: _ComparisonChart(comparison: data.comparison),
         ),
         const SizedBox(height: 16),
         _Panel(
@@ -151,16 +190,22 @@ class _Body extends StatelessWidget {
           child: trends.when(
             loading: () => const SizedBox(
               height: 200,
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              child: Center(child: ShimmerBox(height: 180, borderRadius: AppRadius.card)),
             ),
-            error: (_, __) => const Text('Could not load trends'),
-            data: (t) => _TrendChart(trends: t),
+            error: (_, __) => const EmptyState(
+              icon: Icons.show_chart,
+              title: 'Could not load trends',
+            ),
+            data: (t) => _TrendChart(trends: t)
+                .animate()
+                .fadeIn(duration: 400.ms, curve: Curves.easeOutCubic)
+                .slideY(begin: 0.04, duration: 400.ms),
           ),
         ),
         const SizedBox(height: 16),
         _Panel(
           title: 'By category',
-          subtitle: 'Share of spending this month',
+          subtitle: 'Share of spending · ${s.currentLabel}',
           child: _CategorySection(
             breakdown: data.categoryBreakdown,
             categoryById: _cat,
@@ -168,14 +213,20 @@ class _Body extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         _Panel(
-          title: 'Weekly rhythm',
-          subtitle: 'Daily spend in the current week',
-          child: _WeekChart(weekly: data.weeklySpending),
+          title: 'By card / account',
+          subtitle: 'Net spend by payment instrument',
+          child: _InstrumentSection(breakdown: data.instrumentBreakdown),
+        ),
+        const SizedBox(height: 16),
+        _Panel(
+          title: 'Spending rhythm',
+          subtitle: 'Daily breakdown · ${s.currentLabel}',
+          child: _WeekChart(weekly: data.dailySpending, period: period),
         ),
         const SizedBox(height: 16),
         _Panel(
           title: 'Top merchants',
-          subtitle: 'Where you spend the most this month',
+          subtitle: 'Highest spend · ${s.currentLabel}',
           child: _TopMerchants(rows: data.topMerchants),
         ),
       ],
@@ -194,19 +245,22 @@ extension _FirstOrNull<E> on Iterable<E> {
 // ─── Hero banner ─────────────────────────────────────────────────────────────
 
 class _HeroBanner extends StatelessWidget {
-  final String monthName;
   final AnalyticsSummary summary;
+  final PeriodComparison comparison;
   final String topCategory;
 
   const _HeroBanner({
-    required this.monthName,
+    super.key,
     required this.summary,
+    required this.comparison,
     required this.topCategory,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+
+    Widget banner = Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -215,19 +269,15 @@ class _HeroBanner extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AC.accent.withValues(alpha: 0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
+        boxShadow: AppShadows.elevated(
+          Theme.of(context).brightness == Brightness.dark,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Total spent · $monthName',
+            summary.currentLabel,
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 13,
@@ -236,7 +286,7 @@ class _HeroBanner extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            formatInr(summary.thisMonthSpend),
+            formatInr(summary.currentSpend),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 36,
@@ -271,7 +321,7 @@ class _HeroBanner extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '${summary.monthlyChangePercent.abs().toStringAsFixed(0)}% vs last month',
+                      '${summary.changePercent.abs().toStringAsFixed(0)}% vs ${summary.previousLabel.toLowerCase()}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
@@ -291,12 +341,12 @@ class _HeroBanner extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'This week',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+              Text(
+                summary.previousLabel,
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
               Text(
-                formatInr(summary.thisWeekSpend),
+                formatInr(summary.previousSpend),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
@@ -308,6 +358,13 @@ class _HeroBanner extends StatelessWidget {
         ],
       ),
     );
+
+    if (disableAnimations) return banner;
+
+    return banner
+        .animate()
+        .fadeIn(duration: 400.ms, curve: Curves.easeOutCubic)
+        .slideY(begin: -0.04, duration: 400.ms, curve: Curves.easeOutCubic);
   }
 }
 
@@ -320,6 +377,7 @@ class _StatCard extends StatelessWidget {
   final String? hint;
   final String? trend;
   final bool? trendUp;
+  final int index;
 
   const _StatCard({
     required this.label,
@@ -328,17 +386,14 @@ class _StatCard extends StatelessWidget {
     this.hint,
     this.trend,
     this.trendUp,
+    this.index = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = AppCard(
+      margin: EdgeInsets.zero,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -387,6 +442,13 @@ class _StatCard extends StatelessWidget {
         ],
       ),
     );
+
+    if (MediaQuery.disableAnimationsOf(context)) return card;
+
+    return card
+        .animate()
+        .fadeIn(duration: 350.ms, delay: Duration(milliseconds: index * 40))
+        .slideY(begin: 0.06, duration: 350.ms, delay: Duration(milliseconds: index * 40));
   }
 }
 
@@ -401,13 +463,9 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return AppCard(
+      margin: EdgeInsets.zero,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -425,7 +483,10 @@ class _Panel extends StatelessWidget {
           child,
         ],
       ),
-    );
+    )
+        .animate()
+        .fadeIn(duration: 400.ms, curve: Curves.easeOutCubic)
+        .slideY(begin: 0.04, duration: 400.ms);
   }
 }
 
@@ -551,7 +612,10 @@ class _CategorySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (breakdown.isEmpty) {
-      return const Text('No categorized spending yet');
+      return const EmptyState(
+        icon: Icons.category_outlined,
+        title: 'No categorized spending yet',
+      );
     }
 
     final sections = breakdown.asMap().entries.map((e) {
@@ -633,16 +697,174 @@ class _CategorySection extends StatelessWidget {
   }
 }
 
+class _InstrumentSection extends StatelessWidget {
+  final List<InstrumentBreakdown> breakdown;
+  const _InstrumentSection({required this.breakdown});
+
+  @override
+  Widget build(BuildContext context) {
+    if (breakdown.isEmpty) {
+      return const EmptyState(
+        icon: Icons.credit_card_outlined,
+        title: 'No instrument-tagged spending yet',
+      );
+    }
+    return Column(
+      children: breakdown.take(6).toList().asMap().entries.map((entry) {
+        final row = entry.value;
+        return AppCard(
+          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      row.paymentInstrumentName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(formatInr(row.total)),
+                  const SizedBox(width: 8),
+                  Text('${row.percentage.toStringAsFixed(0)}%'),
+                ],
+              ),
+              const SizedBox(height: 6),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: (row.percentage / 100).clamp(0, 1)),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeOutCubic,
+                builder: (_, value, __) => ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.chip),
+                  child: LinearProgressIndicator(
+                    value: value,
+                    minHeight: 6,
+                    backgroundColor: Theme.of(context).dividerColor,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.purple),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        )
+            .animate()
+            .fadeIn(duration: 350.ms, delay: Duration(milliseconds: entry.key * 40));
+      }).toList(),
+    );
+  }
+}
+
+// ─── Period comparison chart ─────────────────────────────────────────────────
+
+class _ComparisonChart extends StatelessWidget {
+  final PeriodComparison comparison;
+  const _ComparisonChart({required this.comparison});
+
+  @override
+  Widget build(BuildContext context) {
+    final values = [comparison.currentSpend, comparison.previousSpend];
+    final maxVal = values.fold<double>(0, (m, v) => v > m ? v : m);
+    final effectiveMax = maxVal < 1 ? 100.0 : maxVal * 1.3;
+
+    return SizedBox(
+      height: 200,
+      child: BarChart(
+        BarChartData(
+          maxY: effectiveMax,
+          barTouchData: BarTouchData(
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipColor: (_) =>
+                  Theme.of(context).cardTheme.color ?? Colors.white,
+              getTooltipItem: (group, _, rod, __) => BarTooltipItem(
+                formatInr(rod.toY),
+                const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          titlesData: FlTitlesData(
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 36,
+                getTitlesWidget: (v, _) {
+                  final label = v.toInt() == 0
+                      ? comparison.currentLabel
+                      : comparison.previousLabel;
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      label,
+                      style: Theme.of(context).textTheme.labelSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                  );
+                },
+              ),
+            ),
+            leftTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+          ),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            horizontalInterval: effectiveMax / 4,
+            getDrawingHorizontalLine: (_) => FlLine(
+              color: Theme.of(context).dividerColor,
+              strokeWidth: 1,
+              dashArray: [4, 4],
+            ),
+          ),
+          borderData: FlBorderData(show: false),
+          barGroups: [
+            BarChartGroupData(
+              x: 0,
+              barRods: [
+                BarChartRodData(
+                  toY: comparison.currentSpend,
+                  color: AC.accent,
+                  width: 40,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                ),
+              ],
+            ),
+            BarChartGroupData(
+              x: 1,
+              barRods: [
+                BarChartRodData(
+                  toY: comparison.previousSpend,
+                  color: AC.accent.withValues(alpha: 0.45),
+                  width: 40,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Weekly bar chart ────────────────────────────────────────────────────────
 
 class _WeekChart extends StatelessWidget {
   final List<WeeklySpending> weekly;
-  const _WeekChart({required this.weekly});
+  final AnalyticsPeriod period;
+  const _WeekChart({required this.weekly, required this.period});
 
   @override
   Widget build(BuildContext context) {
     if (weekly.isEmpty) {
-      return const Text('No spending this week');
+      return const Text('No spending in this period');
     }
 
     final maxVal = weekly.fold<double>(0, (m, w) => w.total > m ? w.total : m);
@@ -676,7 +898,9 @@ class _WeekChart extends StatelessWidget {
                   return Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
-                      DateFormat('E').format(weekly[i].date).substring(0, 2),
+                      period == AnalyticsPeriod.month
+                          ? DateFormat('d').format(weekly[i].date)
+                          : DateFormat('E').format(weekly[i].date).substring(0, 2),
                       style: Theme.of(context).textTheme.labelSmall,
                     ),
                   );
