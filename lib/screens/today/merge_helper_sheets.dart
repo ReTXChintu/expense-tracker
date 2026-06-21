@@ -143,33 +143,45 @@ class _MergePickerSheetState extends State<_MergePickerSheet> {
           const SizedBox(height: 16),
           if (widget.amountDiff) ...[
             Text('Amount', style: Theme.of(context).textTheme.labelLarge),
-            RadioListTile<bool>(
-              title: Text('${a.merchant} — ₹${a.amount.toStringAsFixed(0)}'),
-              value: true,
+            RadioGroup<bool>(
               groupValue: _useAmountFromA,
-              onChanged: (v) => setState(() => _useAmountFromA = true),
-            ),
-            RadioListTile<bool>(
-              title: Text('${b.merchant} — ₹${b.amount.toStringAsFixed(0)}'),
-              value: false,
-              groupValue: _useAmountFromA,
-              onChanged: (v) => setState(() => _useAmountFromA = false),
+              onChanged: (v) {
+                if (v != null) setState(() => _useAmountFromA = v);
+              },
+              child: Column(
+                children: [
+                  RadioListTile<bool>(
+                    title: Text('${a.merchant} — ₹${a.amount.toStringAsFixed(0)}'),
+                    value: true,
+                  ),
+                  RadioListTile<bool>(
+                    title: Text('${b.merchant} — ₹${b.amount.toStringAsFixed(0)}'),
+                    value: false,
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
           ],
           if (widget.timeDiff) ...[
             Text('Time', style: Theme.of(context).textTheme.labelLarge),
-            RadioListTile<bool>(
-              title: Text('${a.merchant} — ${DateFormat.jm().format(a.date.toLocal())}'),
-              value: true,
+            RadioGroup<bool>(
               groupValue: _useTimeFromA,
-              onChanged: (v) => setState(() => _useTimeFromA = true),
-            ),
-            RadioListTile<bool>(
-              title: Text('${b.merchant} — ${DateFormat.jm().format(b.date.toLocal())}'),
-              value: false,
-              groupValue: _useTimeFromA,
-              onChanged: (v) => setState(() => _useTimeFromA = false),
+              onChanged: (v) {
+                if (v != null) setState(() => _useTimeFromA = v);
+              },
+              child: Column(
+                children: [
+                  RadioListTile<bool>(
+                    title: Text('${a.merchant} — ${DateFormat.jm().format(a.date.toLocal())}'),
+                    value: true,
+                  ),
+                  RadioListTile<bool>(
+                    title: Text('${b.merchant} — ${DateFormat.jm().format(b.date.toLocal())}'),
+                    value: false,
+                  ),
+                ],
+              ),
             ),
           ],
           const SizedBox(height: 16),

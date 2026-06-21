@@ -112,9 +112,9 @@ class _SmsPermissionCardState extends State<SmsPermissionCard> {
               children: [
                 if (!granted)
                   FilledButton.tonal(onPressed: _request, child: const Text('Grant access')),
-                TextButton(
+                const TextButton(
                   onPressed: openAppSettings,
-                  child: const Text('Open settings'),
+                  child: Text('Open settings'),
                 ),
               ],
             ),

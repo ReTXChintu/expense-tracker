@@ -85,9 +85,9 @@ class TodayHeroShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
-      child: const ShimmerBox(height: 100, borderRadius: AppRadius.card),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
+      child: ShimmerBox(height: 100, borderRadius: AppRadius.card),
     );
   }
 }

@@ -462,22 +462,32 @@ class _SelfTransferSheetState extends State<SelfTransferSheet> {
               padding: const EdgeInsets.all(16),
               children: [
                 Text('From', style: Theme.of(context).textTheme.labelLarge),
-                ...widget.instruments.where((i) => i.id != _to).map(
-                  (inst) => RadioListTile<String>(
-                    title: Text(inst.displayName),
-                    value: inst.id,
-                    groupValue: _from,
-                    onChanged: (v) => setState(() => _from = v),
+                RadioGroup<String>(
+                  groupValue: _from,
+                  onChanged: (v) => setState(() => _from = v),
+                  child: Column(
+                    children: [
+                      for (final inst in widget.instruments.where((i) => i.id != _to))
+                        RadioListTile<String>(
+                          title: Text(inst.displayName),
+                          value: inst.id,
+                        ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text('To', style: Theme.of(context).textTheme.labelLarge),
-                ...widget.instruments.where((i) => i.id != _from).map(
-                  (inst) => RadioListTile<String>(
-                    title: Text(inst.displayName),
-                    value: inst.id,
-                    groupValue: _to,
-                    onChanged: (v) => setState(() => _to = v),
+                RadioGroup<String>(
+                  groupValue: _to,
+                  onChanged: (v) => setState(() => _to = v),
+                  child: Column(
+                    children: [
+                      for (final inst in widget.instruments.where((i) => i.id != _from))
+                        RadioListTile<String>(
+                          title: Text(inst.displayName),
+                          value: inst.id,
+                        ),
+                    ],
                   ),
                 ),
               ],

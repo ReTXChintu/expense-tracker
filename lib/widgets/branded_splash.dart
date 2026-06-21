@@ -14,7 +14,7 @@ class BrandedSplashOverlay extends StatelessWidget {
       color: kSplashBackground,
       child: Center(
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Image.asset(
             'assets/branding/logo_full.png',
             height: kSplashLogoHeight,
