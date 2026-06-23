@@ -7,10 +7,22 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.join(__dirname, "..");
+const ghShell = process.platform === "win32";
+
+function ghSubprocessEnv() {
+  const env = { ...process.env };
+  delete env.GITHUB_TOKEN;
+  return env;
+}
 
 function githubToken() {
   try {
-    const fromGh = execSync("gh auth token", { cwd: root, encoding: "utf8" }).trim();
+    const fromGh = execSync("gh auth token", {
+      cwd: root,
+      encoding: "utf8",
+      shell: ghShell,
+      env: ghSubprocessEnv(),
+    }).trim();
     if (fromGh) return fromGh;
   } catch {
     // gh not installed or not logged in

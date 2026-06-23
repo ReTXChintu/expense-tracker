@@ -8,14 +8,22 @@ const path = require("path");
 const root = path.join(__dirname, "..");
 const ghShell = process.platform === "win32";
 
+/** gh echoes $GITHUB_TOKEN when set — use keyring by unsetting it for the subprocess. */
+function ghSubprocessEnv() {
+  const env = { ...process.env };
+  delete env.GITHUB_TOKEN;
+  return env;
+}
+
 function githubToken() {
   try {
     const fromGh = execSync("gh auth token", {
       cwd: root,
       encoding: "utf8",
       shell: ghShell,
+      env: ghSubprocessEnv(),
     }).trim();
-    if (fromGh) return { token: fromGh, source: "gh auth token" };
+    if (fromGh) return { token: fromGh, source: "gh keyring" };
   } catch {
     // gh not installed or not logged in
   }
