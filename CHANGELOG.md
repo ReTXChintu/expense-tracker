@@ -51,6 +51,23 @@
 * **app:** add API connection test and improve env configuration ([e1519c9](https://github.com/ReTXChintu/expense-tracker/commit/e1519c92ea21b4ad82ba345136a3aadb1d36800b))
 * **emi,split:** add EMI and split bill tracking on mobile ([a19e081](https://github.com/ReTXChintu/expense-tracker/commit/a19e08197fcfb45a72f4ccf31ecb90acaea86140))
 
+# [2.1.0](https://github.com/ReTXChintu/expense-tracker/compare/v2.0.0...v2.1.0) (2026-06-23)
+
+
+### Bug Fixes
+
+* **release:** prefer gh auth token over stale GITHUB_TOKEN ([2d22296](https://github.com/ReTXChintu/expense-tracker/commit/2d22296aef3690a3f064261e7b7fe5e550e9f919))
+* **release:** read gh token from keyring when GITHUB_TOKEN env is set ([9cdb38a](https://github.com/ReTXChintu/expense-tracker/commit/9cdb38a318fc8fba2965b1067a7cb4c1bde04880))
+* **release:** upload spendlog.apk via GitHub API with token auth ([c2406f6](https://github.com/ReTXChintu/expense-tracker/commit/c2406f62662e3e240d9da9fcb665cfe837e13f77))
+* **release:** validate GitHub token and run release-it in CI mode ([25adade](https://github.com/ReTXChintu/expense-tracker/commit/25adadef7dc3ad2d26bb58bb3ee1fb710ce5b2fa))
+* **split:** remove duplicate split settlement sheet definitions ([dc27e27](https://github.com/ReTXChintu/expense-tracker/commit/dc27e27c984678a64ce49290b8368c3e92eee56e))
+
+
+### Features
+
+* **app:** add API connection test and improve env configuration ([e1519c9](https://github.com/ReTXChintu/expense-tracker/commit/e1519c92ea21b4ad82ba345136a3aadb1d36800b))
+* **emi,split:** add EMI and split bill tracking on mobile ([a19e081](https://github.com/ReTXChintu/expense-tracker/commit/a19e08197fcfb45a72f4ccf31ecb90acaea86140))
+
 # [2.0.0](https://github.com/ReTXChintu/expense-tracker/compare/1.1.0...v2.0.0) (2026-06-21)
 
 
