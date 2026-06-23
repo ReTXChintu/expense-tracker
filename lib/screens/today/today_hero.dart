@@ -18,14 +18,7 @@ class TodayHero extends StatelessWidget {
     this.onUncategorizedTap,
   });
 
-  double get _netSpend {
-    return transactions
-        .where((t) => t.isCategorized && countsInSpendAnalytics(t.kind))
-        .fold<double>(0, (sum, t) {
-      if (t.kind == TxKind.refund) return sum - t.amount;
-      return sum + (t.isDebit ? t.amount : -t.amount);
-    });
-  }
+  double get _netSpend => sumNetSpend(transactions);
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +54,7 @@ class TodayHero extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           _AnimatedAmount(
+            key: ValueKey(netSpend),
             amount: netSpend,
             disableAnimations: disableAnimations,
           ),
@@ -101,6 +95,7 @@ class _AnimatedAmount extends StatelessWidget {
   final bool disableAnimations;
 
   const _AnimatedAmount({
+    super.key,
     required this.amount,
     required this.disableAnimations,
   });

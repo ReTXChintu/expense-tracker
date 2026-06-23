@@ -10,6 +10,8 @@ import '../theme.dart';
 import '../widgets/app_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/shimmer_box.dart';
+import 'emi/emi_plans_screen.dart';
+import 'split/split_bills_screen.dart';
 
 const _pieColors = [
   Color(0xFF4361EE),
@@ -82,7 +84,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-class _Body extends StatelessWidget {
+class _Body extends ConsumerWidget {
   final AnalyticsDashboard data;
   final AsyncValue<List<MonthlyTrend>> trends;
   final AsyncValue<List<Category>> categories;
@@ -102,8 +104,10 @@ class _Body extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final s = data.summary;
+    final activeEmis = ref.watch(activeEmiPlansProvider);
+    final activeSplits = ref.watch(activeSplitBillsProvider);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
@@ -134,6 +138,77 @@ class _Body extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
+        activeEmis.when(
+          data: (plans) {
+            if (plans.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: AppCard(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const EmiPlansScreen()),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.account_balance_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Running EMIs', style: Theme.of(context).textTheme.titleSmall),
+                          Text(
+                            '${plans.length} active · tap to view progress',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+              ),
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+        ),
+        activeSplits.when(
+          data: (bills) {
+            if (bills.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: AppCard(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SplitBillsScreen()),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.people_outline, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Open splits', style: Theme.of(context).textTheme.titleSmall),
+                          Text(
+                            '${bills.length} active · tap to view who owes what',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+              ),
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+        ),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 200),
           child: GridView.count(

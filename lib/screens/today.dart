@@ -196,7 +196,19 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           ? const Center(child: CircularProgressIndicator())
           : categories.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
+              error: (e, _) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Error: $e'),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: () => ref.invalidate(categoriesProvider),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
               data: (cats) => _Body(
                 state: state,
                 categories: cats,

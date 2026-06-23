@@ -173,7 +173,17 @@ class PaymentInstrument {
 
 enum TxSource { sms, gmail, manual }
 
-enum TxKind { purchase, refund, ccBillPayment, selfTransfer, adjustment }
+enum TxKind {
+  purchase,
+  refund,
+  ccBillPayment,
+  selfTransfer,
+  adjustment,
+  emi,
+  emiRepayment,
+  split,
+  splitSettlement,
+}
 
 class Transaction {
   final String? id;
@@ -186,6 +196,10 @@ class Transaction {
   final TxSource source;
   final TxKind kind;
   final String? linkedTransactionId;
+  final String? emiPlanId;
+  final String? splitBillId;
+  final String? splitParticipantId;
+  final double? ownerShareAmount;
   final String? paymentInstrumentId;
   final String? paymentInstrumentName;
   final String? counterpartyInstrumentId;
@@ -204,6 +218,10 @@ class Transaction {
     required this.source,
     this.kind = TxKind.purchase,
     this.linkedTransactionId,
+    this.emiPlanId,
+    this.splitBillId,
+    this.splitParticipantId,
+    this.ownerShareAmount,
     this.paymentInstrumentId,
     this.paymentInstrumentName,
     this.counterpartyInstrumentId,
@@ -257,6 +275,10 @@ class Transaction {
           : (partsMap.containsKey(TxSource.gmail) ? TxSource.gmail : a.source),
       kind: a.kind,
       linkedTransactionId: a.linkedTransactionId ?? b.linkedTransactionId,
+      emiPlanId: a.emiPlanId ?? b.emiPlanId,
+      splitBillId: a.splitBillId ?? b.splitBillId,
+      splitParticipantId: a.splitParticipantId ?? b.splitParticipantId,
+      ownerShareAmount: a.ownerShareAmount ?? b.ownerShareAmount,
       paymentInstrumentId: a.paymentInstrumentId ?? b.paymentInstrumentId,
       paymentInstrumentName: a.paymentInstrumentName ?? b.paymentInstrumentName,
       counterpartyInstrumentId: a.counterpartyInstrumentId ?? b.counterpartyInstrumentId,
@@ -301,6 +323,10 @@ class Transaction {
     source: source,
     kind: kind,
     linkedTransactionId: linkedTransactionId,
+    emiPlanId: emiPlanId,
+    splitBillId: splitBillId,
+    splitParticipantId: splitParticipantId,
+    ownerShareAmount: ownerShareAmount,
     paymentInstrumentId: paymentInstrumentId,
     paymentInstrumentName: paymentInstrumentName,
     counterpartyInstrumentId: counterpartyInstrumentId,
@@ -325,6 +351,10 @@ class Transaction {
     source: source,
     kind: kind,
     linkedTransactionId: linkedTransactionId,
+    emiPlanId: emiPlanId,
+    splitBillId: splitBillId,
+    splitParticipantId: splitParticipantId,
+    ownerShareAmount: ownerShareAmount,
     paymentInstrumentId: fromId ?? paymentInstrumentId,
     paymentInstrumentName: fromName ?? paymentInstrumentName,
     counterpartyInstrumentId: toId ?? counterpartyInstrumentId,
@@ -344,6 +374,10 @@ class Transaction {
     source: source,
     kind: kind,
     linkedTransactionId: linkedTransactionId,
+    emiPlanId: emiPlanId,
+    splitBillId: splitBillId,
+    splitParticipantId: splitParticipantId,
+    ownerShareAmount: ownerShareAmount,
     paymentInstrumentId: paymentInstrumentId,
     paymentInstrumentName: paymentInstrumentName,
     counterpartyInstrumentId: counterpartyInstrumentId,
@@ -352,7 +386,13 @@ class Transaction {
     rawText: rawText,
   );
 
-  Transaction withKind(TxKind newKind, {String? linkedId}) => Transaction(
+  Transaction withKind(
+    TxKind newKind, {
+    String? linkedId,
+    String? emiPlan,
+    String? splitBill,
+    String? splitParticipant,
+  }) => Transaction(
     id: id,
     merchant: merchant,
     amount: amount,
@@ -363,6 +403,15 @@ class Transaction {
     source: source,
     kind: newKind,
     linkedTransactionId: newKind == TxKind.refund ? linkedId : null,
+    emiPlanId: newKind == TxKind.emi || newKind == TxKind.emiRepayment
+        ? emiPlan ?? emiPlanId
+        : null,
+    splitBillId: newKind == TxKind.split || newKind == TxKind.splitSettlement
+        ? splitBill ?? splitBillId
+        : null,
+    splitParticipantId:
+        newKind == TxKind.splitSettlement ? splitParticipant ?? splitParticipantId : null,
+    ownerShareAmount: newKind == TxKind.split ? ownerShareAmount : null,
     paymentInstrumentId: paymentInstrumentId,
     paymentInstrumentName: paymentInstrumentName,
     counterpartyInstrumentId: counterpartyInstrumentId,
@@ -382,6 +431,7 @@ class Transaction {
     source: source,
     kind: kind,
     linkedTransactionId: linkedTransactionId,
+    emiPlanId: emiPlanId,
     paymentInstrumentId: instId,
     paymentInstrumentName: name,
     counterpartyInstrumentId: counterpartyInstrumentId,
@@ -412,9 +462,17 @@ class Transaction {
         'cc_bill_payment' => TxKind.ccBillPayment,
         'self_transfer' => TxKind.selfTransfer,
         'adjustment' => TxKind.adjustment,
+        'emi' => TxKind.emi,
+        'emi_repayment' => TxKind.emiRepayment,
+        'split' => TxKind.split,
+        'split_settlement' => TxKind.splitSettlement,
         _ => TxKind.purchase,
       },
       linkedTransactionId: j['linkedTransactionId'] as String?,
+      emiPlanId: j['emiPlanId'] as String?,
+      splitBillId: j['splitBillId'] as String?,
+      splitParticipantId: j['splitParticipantId'] as String?,
+      ownerShareAmount: (j['ownerShareAmount'] as num?)?.toDouble(),
       paymentInstrumentId: j['paymentInstrumentId'] as String?,
       paymentInstrumentName: j['paymentInstrumentName'] as String?,
       counterpartyInstrumentId: j['counterpartyInstrumentId'] as String?,
@@ -437,9 +495,14 @@ class Transaction {
     'kind': switch (kind) {
       TxKind.ccBillPayment => 'cc_bill_payment',
       TxKind.selfTransfer => 'self_transfer',
+      TxKind.emiRepayment => 'emi_repayment',
+      TxKind.splitSettlement => 'split_settlement',
       _ => kind.name,
     },
     if (linkedTransactionId != null) 'linkedTransactionId': linkedTransactionId,
+    if (emiPlanId != null) 'emiPlanId': emiPlanId,
+    if (splitBillId != null) 'splitBillId': splitBillId,
+    if (splitParticipantId != null) 'splitParticipantId': splitParticipantId,
     if (paymentInstrumentId != null) 'paymentInstrumentId': paymentInstrumentId,
     if (counterpartyInstrumentId != null)
       'counterpartyInstrumentId': counterpartyInstrumentId,
@@ -452,4 +515,169 @@ class Transaction {
     TxSource.gmail => 'email',
     _ => s.name,
   };
+}
+
+// ─── EMI plan ────────────────────────────────────────────────────────────────
+
+class EmiPlan {
+  final String id;
+  final String originTransactionId;
+  final String merchant;
+  final double principalAmount;
+  final int tenureMonths;
+  final DateTime startDate;
+  final String? paymentInstrumentId;
+  final String status;
+  final int paidInstallments;
+  final int pendingInstallments;
+  final double expectedMonthly;
+  final double repaidAmount;
+  final DateTime estimatedCompletion;
+  final List<EmiRepayment> repayments;
+
+  const EmiPlan({
+    required this.id,
+    required this.originTransactionId,
+    required this.merchant,
+    required this.principalAmount,
+    required this.tenureMonths,
+    required this.startDate,
+    this.paymentInstrumentId,
+    required this.status,
+    required this.paidInstallments,
+    required this.pendingInstallments,
+    required this.expectedMonthly,
+    required this.repaidAmount,
+    required this.estimatedCompletion,
+    this.repayments = const [],
+  });
+
+  bool get isActive => status == 'active';
+
+  factory EmiPlan.fromJson(Map<String, dynamic> j) {
+    final reps = (j['repayments'] as List<dynamic>?) ?? [];
+    return EmiPlan(
+      id: j['id'] as String,
+      originTransactionId: j['originTransactionId'] as String,
+      merchant: j['merchant'] as String,
+      principalAmount: (j['principalAmount'] as num).toDouble(),
+      tenureMonths: j['tenureMonths'] as int,
+      startDate: parseApiDateTime(j['startDate']),
+      paymentInstrumentId: j['paymentInstrumentId'] as String?,
+      status: j['status'] as String,
+      paidInstallments: j['paidInstallments'] as int? ?? 0,
+      pendingInstallments: j['pendingInstallments'] as int? ?? 0,
+      expectedMonthly: (j['expectedMonthly'] as num?)?.toDouble() ?? 0,
+      repaidAmount: (j['repaidAmount'] as num?)?.toDouble() ?? 0,
+      estimatedCompletion: parseApiDateTime(j['estimatedCompletion']),
+      repayments: reps
+          .map((r) => EmiRepayment.fromJson(r as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class EmiRepayment {
+  final String id;
+  final String merchant;
+  final double amount;
+  final DateTime date;
+  final String? paymentInstrumentName;
+
+  const EmiRepayment({
+    required this.id,
+    required this.merchant,
+    required this.amount,
+    required this.date,
+    this.paymentInstrumentName,
+  });
+
+  factory EmiRepayment.fromJson(Map<String, dynamic> j) => EmiRepayment(
+    id: j['id'] as String,
+    merchant: j['merchant'] as String,
+    amount: (j['amount'] as num).toDouble(),
+    date: parseApiDateTime(j['date']),
+    paymentInstrumentName: j['paymentInstrumentName'] as String?,
+  );
+}
+
+// ─── Split bill ─────────────────────────────────────────────────────────────
+
+class SplitParticipant {
+  final String id;
+  final String name;
+  final double shareAmount;
+  final bool isPaid;
+  final String? settlementTransactionId;
+  final DateTime? paidAt;
+
+  const SplitParticipant({
+    required this.id,
+    required this.name,
+    required this.shareAmount,
+    required this.isPaid,
+    this.settlementTransactionId,
+    this.paidAt,
+  });
+
+  factory SplitParticipant.fromJson(Map<String, dynamic> j) => SplitParticipant(
+    id: j['id'] as String,
+    name: j['name'] as String,
+    shareAmount: (j['shareAmount'] as num).toDouble(),
+    isPaid: j['isPaid'] as bool? ?? false,
+    settlementTransactionId: j['settlementTransactionId'] as String?,
+    paidAt: j['paidAt'] != null ? parseApiDateTime(j['paidAt']) : null,
+  );
+}
+
+class SplitBill {
+  final String id;
+  final String originTransactionId;
+  final String merchant;
+  final double totalAmount;
+  final double ownerShareAmount;
+  final DateTime date;
+  final String status;
+  final int paidCount;
+  final int pendingCount;
+  final double pendingAmount;
+  final int participantCount;
+  final List<SplitParticipant> participants;
+
+  const SplitBill({
+    required this.id,
+    required this.originTransactionId,
+    required this.merchant,
+    required this.totalAmount,
+    required this.ownerShareAmount,
+    required this.date,
+    required this.status,
+    required this.paidCount,
+    required this.pendingCount,
+    required this.pendingAmount,
+    required this.participantCount,
+    this.participants = const [],
+  });
+
+  bool get isActive => status == 'active';
+
+  factory SplitBill.fromJson(Map<String, dynamic> j) {
+    final parts = (j['participants'] as List<dynamic>?) ?? [];
+    return SplitBill(
+      id: j['id'] as String,
+      originTransactionId: j['originTransactionId'] as String,
+      merchant: j['merchant'] as String,
+      totalAmount: (j['totalAmount'] as num).toDouble(),
+      ownerShareAmount: (j['ownerShareAmount'] as num).toDouble(),
+      date: parseApiDateTime(j['date']),
+      status: j['status'] as String,
+      paidCount: j['paidCount'] as int? ?? 0,
+      pendingCount: j['pendingCount'] as int? ?? 0,
+      pendingAmount: (j['pendingAmount'] as num?)?.toDouble() ?? 0,
+      participantCount: j['participantCount'] as int? ?? parts.length,
+      participants: parts
+          .map((p) => SplitParticipant.fromJson(p as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 }

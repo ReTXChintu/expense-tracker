@@ -7,6 +7,7 @@ import '../../providers.dart';
 import '../../theme.dart';
 import 'merge_helper_sheets.dart';
 import 'transaction_helper_sheets.dart';
+import '../split/split_setup_sheet.dart';
 
 /// Full transaction editor — single save for all fields.
 class TransactionEditorSheet extends ConsumerStatefulWidget {
@@ -45,12 +46,17 @@ class TransactionEditorSheet extends ConsumerStatefulWidget {
 class _TransactionEditorSheetState extends ConsumerState<TransactionEditorSheet> {
   late final TextEditingController _merchantCtrl;
   late final TextEditingController _amountCtrl;
+  late final TextEditingController _tenureCtrl;
   late bool _isDebit;
   late TxKind _kind;
   String? _categoryId;
   String? _paymentInstrumentId;
   String? _counterpartyInstrumentId;
   String? _linkedTransactionId;
+  String? _emiPlanId;
+  List<SplitParticipantDraft>? _splitParticipants;
+  String? _splitBillId;
+  String? _splitParticipantId;
   bool _saving = false;
   String? _error;
 
@@ -60,18 +66,36 @@ class _TransactionEditorSheetState extends ConsumerState<TransactionEditorSheet>
     final tx = widget.transaction;
     _merchantCtrl = TextEditingController(text: tx.merchant);
     _amountCtrl = TextEditingController(text: tx.amount.toStringAsFixed(0));
+    _tenureCtrl = TextEditingController();
     _isDebit = tx.isDebit;
     _kind = tx.kind;
     _categoryId = tx.categoryId;
     _paymentInstrumentId = tx.paymentInstrumentId;
     _counterpartyInstrumentId = tx.counterpartyInstrumentId;
     _linkedTransactionId = tx.linkedTransactionId;
+    _emiPlanId = tx.emiPlanId;
+    _splitBillId = tx.splitBillId;
+    _splitParticipantId = tx.splitParticipantId;
+    if (tx.kind == TxKind.emi && tx.emiPlanId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadEmiTenure());
+    }
+  }
+
+  Future<void> _loadEmiTenure() async {
+    try {
+      final plans = await ref.read(emiPlansProvider.future);
+      final plan = plans.where((p) => p.id == widget.transaction.emiPlanId).firstOrNull;
+      if (plan != null && mounted) {
+        setState(() => _tenureCtrl.text = plan.tenureMonths.toString());
+      }
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _merchantCtrl.dispose();
     _amountCtrl.dispose();
+    _tenureCtrl.dispose();
     super.dispose();
   }
 
@@ -157,6 +181,44 @@ class _TransactionEditorSheetState extends ConsumerState<TransactionEditorSheet>
     if (purchaseId != null) setState(() => _linkedTransactionId = purchaseId);
   }
 
+  Future<void> _pickEmiPlan() async {
+    final planId = await showPickEmiPlanSheet(context);
+    if (planId != null) setState(() => _emiPlanId = planId);
+  }
+
+  Future<void> _setupSplit() async {
+    final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '').trim());
+    if (amount == null || amount <= 0) {
+      setState(() => _error = 'Enter a valid amount first');
+      return;
+    }
+    final drafts = await showSplitSetupSheet(
+      context,
+      totalAmount: amount,
+      initial: _splitParticipants,
+    );
+    if (drafts != null) setState(() => _splitParticipants = drafts);
+  }
+
+  Future<void> _pickSplitSettlement() async {
+    final link = await showLinkSplitSettlementSheet(context);
+    if (link != null) {
+      setState(() {
+        _splitBillId = link.billId;
+        _splitParticipantId = link.participantId;
+      });
+    }
+  }
+
+  int? get _tenureMonths => int.tryParse(_tenureCtrl.text.trim());
+
+  double? get _estimatedMonthly {
+    final tenure = _tenureMonths;
+    final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '').trim());
+    if (tenure == null || tenure < 1 || amount == null) return null;
+    return amount / tenure;
+  }
+
   Future<void> _save() async {
     final merchant = _merchantCtrl.text.trim();
     final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '').trim());
@@ -175,6 +237,26 @@ class _TransactionEditorSheetState extends ConsumerState<TransactionEditorSheet>
     }
     if (_kind == TxKind.ccBillPayment && _paymentInstrumentId == null) {
       setState(() => _error = 'Select a credit card');
+      return;
+    }
+    if (_kind == TxKind.emi) {
+      final tenure = _tenureMonths;
+      if (tenure == null || tenure < 1 || tenure > 60) {
+        setState(() => _error = 'Enter EMI tenure between 1 and 60 months');
+        return;
+      }
+    }
+    if (_kind == TxKind.emiRepayment && _emiPlanId == null) {
+      setState(() => _error = 'Select an EMI plan');
+      return;
+    }
+    if (_kind == TxKind.split && (_splitParticipants == null || _splitParticipants!.isEmpty)) {
+      setState(() => _error = 'Set up who to split with');
+      return;
+    }
+    if (_kind == TxKind.splitSettlement &&
+        (_splitBillId == null || _splitParticipantId == null)) {
+      setState(() => _error = 'Link this payment to a split');
       return;
     }
 
@@ -196,6 +278,21 @@ class _TransactionEditorSheetState extends ConsumerState<TransactionEditorSheet>
             categoryId: _categoryId,
             kind: _kind,
             linkedTransactionId: _linkedTransactionId,
+            emiTenureMonths: _kind == TxKind.emi ? _tenureMonths : null,
+            emiPlanId: _kind == TxKind.emiRepayment ? _emiPlanId : null,
+            splitParticipants: _kind == TxKind.split
+                ? _splitParticipants?.map((p) => p.toJson()).toList()
+                : null,
+            splitBillId: _kind == TxKind.splitSettlement ? _splitBillId : null,
+            splitParticipantId: _kind == TxKind.splitSettlement ? _splitParticipantId : null,
+            clearEmiPlanId: _kind != TxKind.emi &&
+                _kind != TxKind.emiRepayment &&
+                widget.transaction.emiPlanId != null,
+            clearSplitBillId: _kind != TxKind.split &&
+                _kind != TxKind.splitSettlement &&
+                widget.transaction.splitBillId != null,
+            clearSplitParticipantId: _kind != TxKind.splitSettlement &&
+                widget.transaction.splitParticipantId != null,
             clearLinkedTransactionId: _kind != TxKind.refund &&
                 widget.transaction.linkedTransactionId != null &&
                 _linkedTransactionId == null,
@@ -394,6 +491,56 @@ class _TransactionEditorSheetState extends ConsumerState<TransactionEditorSheet>
                 icon: const Icon(Icons.credit_card, size: 18),
                 label: Text(
                   _paymentInstrumentId != null ? 'Credit card selected' : 'Select credit card',
+                ),
+              ),
+            ],
+
+            if (_kind == TxKind.emi) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _tenureCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Tenure (months)',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  isDense: true,
+                  helperText: _estimatedMonthly != null
+                      ? '≈ ₹${_estimatedMonthly!.toStringAsFixed(0)} / month'
+                      : null,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
+
+            if (_kind == TxKind.emiRepayment) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _pickEmiPlan,
+                icon: const Icon(Icons.account_balance, size: 18),
+                label: Text(_emiPlanId != null ? 'EMI plan linked' : 'Select EMI plan'),
+              ),
+            ],
+
+            if (_kind == TxKind.split) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _setupSplit,
+                icon: const Icon(Icons.people_outline, size: 18),
+                label: Text(
+                  _splitParticipants != null && _splitParticipants!.isNotEmpty
+                      ? '${_splitParticipants!.length} people added'
+                      : 'Set up split',
+                ),
+              ),
+            ],
+
+            if (_kind == TxKind.splitSettlement) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _pickSplitSettlement,
+                icon: const Icon(Icons.link, size: 18),
+                label: Text(
+                  _splitBillId != null ? 'Split linked' : 'Link to split',
                 ),
               ),
             ],

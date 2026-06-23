@@ -172,6 +172,10 @@ class TxTile extends StatelessWidget {
         TxKind.ccBillPayment => Colors.purple,
         TxKind.selfTransfer => Colors.blue,
         TxKind.adjustment => Colors.orange,
+        TxKind.emi => Colors.teal,
+        TxKind.emiRepayment => Colors.indigo,
+        TxKind.split => Colors.deepOrange,
+        TxKind.splitSettlement => Colors.cyan,
         _ => Colors.grey,
       };
 }

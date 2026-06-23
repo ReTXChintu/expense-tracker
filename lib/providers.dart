@@ -52,6 +52,8 @@ class AuthNotifier extends StateNotifier<bool> {
     _ref.read(isLoggedInProvider.notifier).state = true;
     state = true;
 
+    _ref.invalidate(categoriesProvider);
+    _ref.invalidate(paymentInstrumentsProvider);
     await _ensureCategoriesSeeded();
     await NotifManager.scheduleMidnightReminder();
   }
@@ -72,6 +74,8 @@ class AuthNotifier extends StateNotifier<bool> {
     _ref.read(isLoggedInProvider.notifier).state = true;
     state = true;
 
+    _ref.invalidate(categoriesProvider);
+    _ref.invalidate(paymentInstrumentsProvider);
     await _ensureCategoriesSeeded();
     await NotifManager.scheduleMidnightReminder();
   }
@@ -95,12 +99,14 @@ final authProvider = StateNotifierProvider<AuthNotifier, bool>(
 // ─── Categories ───────────────────────────────────────────────────────────────
 
 final categoriesProvider = FutureProvider<List<Category>>((ref) async {
+  if (!ref.watch(isLoggedInProvider)) return [];
   final api = ref.watch(apiProvider);
   final data = await api.get('/categories') as List<dynamic>;
   return data.map((e) => Category.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 final paymentInstrumentsProvider = FutureProvider<List<PaymentInstrument>>((ref) async {
+  if (!ref.watch(isLoggedInProvider)) return [];
   final api = ref.watch(apiProvider);
   final data = await api.get('/payment-instruments') as List<dynamic>;
   return data.map((e) => PaymentInstrument.fromJson(e as Map<String, dynamic>)).toList();
@@ -420,7 +426,9 @@ class TodayNotifier extends StateNotifier<TodayState> {
       state = state.copyWith(error: e.toString());
     }
 
-    final instruments = await _ref.read(paymentInstrumentsProvider.future);
+    final instruments = await _ref.read(paymentInstrumentsProvider.future).catchError(
+      (_) => <PaymentInstrument>[],
+    );
 
     for (final tx in newTxs) {
       final tagged = applySuggestedKind(applyInstrumentMatch(tx, instruments));
@@ -504,7 +512,9 @@ class TodayNotifier extends StateNotifier<TodayState> {
       if (shouldScan) {
         await _scanAndPersist(normalized);
         if (isPastDate(normalized)) {
-          await _scannedDays.markScanned(normalized);
+          try {
+            await _scannedDays.markScanned(normalized);
+          } catch (_) {}
         } else if (isToday(normalized)) {
           _lastScanAt[key] = DateTime.now();
         }
@@ -752,9 +762,17 @@ class TodayNotifier extends StateNotifier<TodayState> {
     String? categoryId,
     TxKind? kind,
     String? linkedTransactionId,
+    int? emiTenureMonths,
+    String? emiPlanId,
+    List<Map<String, dynamic>>? splitParticipants,
+    String? splitBillId,
+    String? splitParticipantId,
     String? paymentInstrumentId,
     String? counterpartyInstrumentId,
     bool clearLinkedTransactionId = false,
+    bool clearEmiPlanId = false,
+    bool clearSplitBillId = false,
+    bool clearSplitParticipantId = false,
     bool clearPaymentInstrumentId = false,
     bool clearCounterpartyInstrumentId = false,
   }) async {
@@ -768,13 +786,32 @@ class TodayNotifier extends StateNotifier<TodayState> {
         data['kind'] = switch (kind) {
           TxKind.ccBillPayment => 'cc_bill_payment',
           TxKind.selfTransfer => 'self_transfer',
+          TxKind.emiRepayment => 'emi_repayment',
+          TxKind.splitSettlement => 'split_settlement',
           _ => kind.name,
         };
       }
+      if (emiTenureMonths != null) data['emiTenureMonths'] = emiTenureMonths;
+      if (splitParticipants != null) data['splitParticipants'] = splitParticipants;
       if (linkedTransactionId != null) {
         data['linkedTransactionId'] = linkedTransactionId;
       } else if (clearLinkedTransactionId) {
         data['linkedTransactionId'] = null;
+      }
+      if (emiPlanId != null) {
+        data['emiPlanId'] = emiPlanId;
+      } else if (clearEmiPlanId) {
+        data['emiPlanId'] = null;
+      }
+      if (splitBillId != null) {
+        data['splitBillId'] = splitBillId;
+      } else if (clearSplitBillId) {
+        data['splitBillId'] = null;
+      }
+      if (splitParticipantId != null) {
+        data['splitParticipantId'] = splitParticipantId;
+      } else if (clearSplitParticipantId) {
+        data['splitParticipantId'] = null;
       }
       if (paymentInstrumentId != null) {
         data['paymentInstrumentId'] = paymentInstrumentId;
@@ -804,6 +841,8 @@ class TodayNotifier extends StateNotifier<TodayState> {
       state = state.copyWith(transactions: list);
       _cacheTransactions(state.date, list);
       _invalidateDashboard();
+      _ref.invalidate(emiPlansProvider);
+      _ref.invalidate(splitBillsProvider);
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
@@ -813,6 +852,34 @@ class TodayNotifier extends StateNotifier<TodayState> {
 final todayProvider = StateNotifierProvider<TodayNotifier, TodayState>(
   (ref) => TodayNotifier(ref.watch(apiProvider), ref),
 );
+
+// ─── EMI plans ────────────────────────────────────────────────────────────────
+
+final emiPlansProvider = FutureProvider.autoDispose<List<EmiPlan>>((ref) async {
+  final api = ref.watch(apiProvider);
+  final res = await api.get('/emi-plans', query: {'status': 'all'}) as List<dynamic>;
+  return res.map((j) => EmiPlan.fromJson(j as Map<String, dynamic>)).toList();
+});
+
+final activeEmiPlansProvider = Provider<AsyncValue<List<EmiPlan>>>((ref) {
+  return ref.watch(emiPlansProvider).whenData(
+    (plans) => plans.where((p) => p.isActive).toList(),
+  );
+});
+
+// ─── Split bills ─────────────────────────────────────────────────────────────
+
+final splitBillsProvider = FutureProvider.autoDispose<List<SplitBill>>((ref) async {
+  final api = ref.watch(apiProvider);
+  final res = await api.get('/split-bills', query: {'status': 'all'}) as List<dynamic>;
+  return res.map((j) => SplitBill.fromJson(j as Map<String, dynamic>)).toList();
+});
+
+final activeSplitBillsProvider = Provider<AsyncValue<List<SplitBill>>>((ref) {
+  return ref.watch(splitBillsProvider).whenData(
+    (bills) => bills.where((b) => b.isActive).toList(),
+  );
+});
 
 // ─── Analytics (same API as web panel) ────────────────────────────────────────
 
