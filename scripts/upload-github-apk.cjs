@@ -9,12 +9,14 @@ const path = require("path");
 const root = path.join(__dirname, "..");
 
 function githubToken() {
-  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
   try {
-    return execSync("gh auth token", { cwd: root, encoding: "utf8" }).trim();
+    const fromGh = execSync("gh auth token", { cwd: root, encoding: "utf8" }).trim();
+    if (fromGh) return fromGh;
   } catch {
-    return null;
+    // gh not installed or not logged in
   }
+  const fromEnv = process.env.GITHUB_TOKEN?.trim();
+  return fromEnv || null;
 }
 
 function githubRepo() {

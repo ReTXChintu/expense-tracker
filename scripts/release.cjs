@@ -8,12 +8,14 @@ const path = require("path");
 const root = path.join(__dirname, "..");
 
 function githubToken() {
-  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
   try {
-    return execSync("gh auth token", { cwd: root, encoding: "utf8" }).trim();
+    const fromGh = execSync("gh auth token", { cwd: root, encoding: "utf8" }).trim();
+    if (fromGh) return fromGh;
   } catch {
-    return null;
+    // gh not installed or not logged in
   }
+  const fromEnv = process.env.GITHUB_TOKEN?.trim();
+  return fromEnv || null;
 }
 
 const token = githubToken();
@@ -21,10 +23,10 @@ const env = { ...process.env };
 if (token) {
   env.GITHUB_TOKEN = token;
 } else {
-  console.warn(
-    "WARNING: No GITHUB_TOKEN and `gh auth token` failed. GitHub release assets will not upload.",
+  console.error(
+    "ERROR: Could not authenticate with GitHub. Run `gh auth login` or set GITHUB_TOKEN (repo scope).",
   );
-  console.warn("Run `gh auth login` or set GITHUB_TOKEN, then retry.");
+  process.exit(1);
 }
 
 const args = process.argv.slice(2);
