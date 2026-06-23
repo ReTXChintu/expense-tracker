@@ -1,7 +1,7 @@
 name: expense_tracker
 description: Simple daily expense logger with SMS and Gmail integration
 publish_to: none
-version: 2.1.0+6
+version: 2.1.0+7
 environment:
   sdk: '>=3.9.0 <4.0.0'
 dependencies:
