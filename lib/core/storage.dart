@@ -12,6 +12,12 @@ const _storage = FlutterSecureStorage(
 class AppStorage {
   static const _keyToken = 'access_token';
 
+  static String? _cachedToken;
+  static Future<String?>? _tokenReadInFlight;
+
+  /// Warms the in-memory token cache (call once at startup when logged in).
+  static Future<String?> warmTokenCache() => getToken();
+
   /// Reads a value, recovering gracefully when Android Keystore data is corrupt.
   static Future<String?> _safeRead(String key) async {
     try {
@@ -19,12 +25,10 @@ class AppStorage {
     } on PlatformException catch (e, st) {
       debugPrint('Secure storage read failed for $key: $e');
       debugPrint('$st');
-      await _purgeCorruptedStorage();
       return null;
     } catch (e, st) {
       debugPrint('Secure storage read failed for $key: $e');
       debugPrint('$st');
-      await _purgeCorruptedStorage();
       return null;
     }
   }
@@ -38,6 +42,7 @@ class AppStorage {
   }
 
   static Future<void> saveToken(String token) async {
+    _cachedToken = token;
     try {
       await _storage.write(key: _keyToken, value: token);
     } on PlatformException catch (e, st) {
@@ -48,11 +53,28 @@ class AppStorage {
     }
   }
 
-  static Future<String?> getToken() => _safeRead(_keyToken);
+  static Future<String?> getToken() async {
+    if (_cachedToken != null) return _cachedToken;
+    if (_tokenReadInFlight != null) return _tokenReadInFlight;
+
+    _tokenReadInFlight = _loadTokenFromStorage();
+    try {
+      return await _tokenReadInFlight;
+    } finally {
+      _tokenReadInFlight = null;
+    }
+  }
+
+  static Future<String?> _loadTokenFromStorage() async {
+    final token = await _safeRead(_keyToken);
+    _cachedToken = token;
+    return token;
+  }
 
   static Future<bool> hasToken() async => (await getToken()) != null;
 
   static Future<void> clearToken() async {
+    _cachedToken = null;
     try {
       await _storage.delete(key: _keyToken);
     } on PlatformException catch (e) {

@@ -58,6 +58,8 @@ npm run release:major   # or release:minor / release:patch
 
 Requires a clean git working tree. To build the APK only: `npm run build:apk`.
 
+Release builds read `API_BASE_URL` from `.env` and bake it into the APK via `--dart-define`. Use an **HTTPS** production URL (see `.env.example`). Debug builds (`flutter run`) can use a local `http://` LAN URL on the same Wi‑Fi.
+
 **Attach APK to an existing release** (e.g. v2.0.0 was created without the file):
 
 ```powershell

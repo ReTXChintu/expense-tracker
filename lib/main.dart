@@ -9,7 +9,10 @@ import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env');
+  const apiDefine = String.fromEnvironment('API_BASE_URL');
+  if (apiDefine.isEmpty) {
+    await dotenv.load(fileName: '.env');
+  }
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
   );
@@ -17,6 +20,7 @@ void main() async {
   await NotifManager.init();
   final loggedIn = await AppStorage.hasToken();
   if (loggedIn) {
+    await AppStorage.warmTokenCache();
     // Ensure reminders are re-scheduled after fresh install/update.
     await NotifManager.scheduleMidnightReminder();
   }

@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
 import '../core/api.dart';
+import '../core/env.dart';
 import '../theme.dart';
 import '../widgets/app_card.dart';
 import '../widgets/branded_splash.dart';
@@ -22,6 +23,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   final _nameC = TextEditingController();
   bool _loading = false;
   bool _obscure = true;
+  bool _testingConnection = false;
   String? _error;
 
   @override
@@ -38,6 +40,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _passC.dispose();
     _nameC.dispose();
     super.dispose();
+  }
+
+  Future<void> _testConnection() async {
+    setState(() => _testingConnection = true);
+    try {
+      await ref.read(apiProvider).get('/categories');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connected — server responded OK')),
+      );
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      final reached = e.isUnauthorized || (e.statusCode != null && e.statusCode! < 500);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            reached
+                ? 'Connected — server reached (${e.statusCode})'
+                : 'Server error: ${e.message}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connection failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _testingConnection = false);
+    }
   }
 
   Future<void> _submit() async {
@@ -238,6 +270,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       .fadeIn(duration: 350.ms, delay: 100.ms),
                   const SizedBox(height: AppSpacing.xl),
                   animatedForm,
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    Env.apiBaseUrl,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.45),
+                      fontSize: 11,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: _testingConnection ? null : _testConnection,
+                    child: _testingConnection
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Test connection'),
+                  ),
                   const SizedBox(height: AppSpacing.lg),
                 ],
               ),
